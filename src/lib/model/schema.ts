@@ -45,6 +45,7 @@ const reaction = z.object({
   reverseSource: z.enum(["reactome", "inferred"]).optional(),
   enzymeIds: z.array(z.string()),
   ecNumbers: z.array(z.string()),
+  catalysis: z.array(z.object({ enzymeId: z.string(), activity: z.string().optional(), ecNumbers: z.array(z.string()) })).optional(),
   compartmentIds: z.array(z.string()),
   pathwayIds: z.array(z.string()),
   regulation: z.array(regulation),

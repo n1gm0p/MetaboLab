@@ -12,8 +12,10 @@ export interface AuditCategory {
   /** what the finding means and how it can be resolved */
   suggestion: string;
   count: number;
-  /** a few affected record ids (reactions, metabolites, enzymes...) */
+  /** a few affected records with details, for reading */
   examples: string[];
+  /** every affected record id (reaction, metabolite, enzyme or pathway id) */
+  recordIds: string[];
 }
 
 export interface AuditReport {
@@ -27,13 +29,18 @@ export interface AuditReport {
 
 const MAX_EXAMPLES = 25;
 
+/** Chemical element symbols (IUPAC). Anything else in a formula (R, X, A, n...) is a generic placeholder. */
+const ELEMENTS = new Set(
+  "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu".split(" "),
+);
+
 /** Count atoms in a Hill formula. Returns null for generic formulas (R, X, n, parentheses...). */
 export function parseFormula(formula: string | undefined): Record<string, number> | null {
   if (!formula || !/^([A-Z][a-z]?\d*)+$/.test(formula)) return null;
   const out: Record<string, number> = {};
   for (const [, el, n] of formula.matchAll(/([A-Z][a-z]?)(\d*)/g)) {
     if (!el) continue;
-    if (el === "R" || el === "X") return null;
+    if (!ELEMENTS.has(el)) return null;
     out[el] = (out[el] ?? 0) + (n ? Number(n) : 1);
   }
   return out;
@@ -93,9 +100,11 @@ export function auditDataset(ds: Dataset, now = new Date()): AuditReport {
   const categories = new Map<string, AuditCategory>();
   const add = (id: string, severity: Severity, title: string, suggestion: string, example?: string) => {
     let c = categories.get(id);
-    if (!c) categories.set(id, (c = { id, severity, title, suggestion, count: 0, examples: [] }));
+    if (!c) categories.set(id, (c = { id, severity, title, suggestion, count: 0, examples: [], recordIds: [] }));
     c.count++;
     if (example && c.examples.length < MAX_EXAMPLES) c.examples.push(example);
+    const rid = example?.match(/^(?:metabolite |reaction |enzyme |pathway )?(\S+)/)?.[1];
+    if (rid) c.recordIds.push(rid);
   };
 
   const mets = new Map(ds.metabolites.map((m) => [m.id, m]));

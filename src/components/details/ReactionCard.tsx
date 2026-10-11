@@ -120,10 +120,9 @@ export function ReactionCard({ id }: { id: string }) {
                     {e.nameRu ?? e.name}
                   </button>
                   {e.genes.length > 0 && <div className="mt-0.5 text-[12px] text-muted">Гены: {e.genes.join(", ")}</div>}
-                  {e.activity && (
+                  {(r.catalysis?.find((c) => c.enzymeId === e.id)?.activity ?? e.activity) && (
                     <div className="mt-0.5 text-[12px] text-muted">
-                      Активность (GO): {e.activity}
-                      {e.activityRu && ` — ${e.activityRu}`}
+                      Активность (GO) в этой реакции: {r.catalysis?.find((c) => c.enzymeId === e.id)?.activity ?? e.activity}
                     </div>
                   )}
                   {e.cofactorIds.length > 0 && (

@@ -324,12 +324,17 @@ async function main() {
       continue;
     }
     const compartmentIds = [...new Set(asArray(r.compartment).map(addCompartment).filter(Boolean))];
-    const enz = asArray(r.catalystActivity)
-      .map((x) => catalystActivities.get(refId(x)))
-      .filter(Boolean)
-      .map((ca) => enzymeFor(ca, r.stId, compartmentIds))
-      .filter(Boolean);
-    const ecNumbers = [...new Set(enz.flatMap((e) => e.ecNumbers))];
+    const splitEc = (ca) => (ca.activity?.ecNumber ? String(ca.activity.ecNumber).split(/[,;\s]+/).filter(Boolean) : []);
+    const enz = [];
+    const catalysis = [];
+    for (const ca of asArray(r.catalystActivity).map((x) => catalystActivities.get(refId(x))).filter(Boolean)) {
+      const e = enzymeFor(ca, r.stId, compartmentIds);
+      if (!e) continue;
+      enz.push(e);
+      catalysis.push({ enzymeId: e.id, activity: ca.activity?.name ?? undefined, ecNumbers: splitEc(ca) });
+    }
+    // EC numbers of this reaction's own catalyst activities (a catalyst may have other activities elsewhere)
+    const ecNumbers = [...new Set(catalysis.flatMap((c) => c.ecNumbers))];
 
     const regulation = asArray(r.regulatedBy)
       .map((x) => regulations.get(refId(x)))
@@ -347,18 +352,14 @@ async function main() {
         };
       });
 
-    // transport: the same chemical appears on both sides in different compartments
-    const byChebi = (parts) => {
-      const map = new Map();
-      for (const p of parts) {
-        const m = metabolitesByStId.get(p.metaboliteId);
-        if (m?.chebiId && !m.currency) map.set(m.chebiId, m.compartmentId);
-      }
-      return map;
-    };
-    const inMap = byChebi(inputs);
-    const outMap = byChebi(outputs);
-    const isTransport = [...inMap].some(([chebi, comp]) => outMap.has(chebi) && outMap.get(chebi) !== comp);
+    // transport: the same entity appears on both sides in different compartments. "Same" = same ChEBI
+    // id, or the same Reactome name (charge states of one compound may carry different ChEBI ids,
+    // e.g. GSH; proteins and complexes have no ChEBI id at all).
+    const mets = (parts) => parts.map((p) => metabolitesByStId.get(p.metaboliteId)).filter((m) => m && !m.currency);
+    const sameEntity = (a, b) =>
+      (a.chebiId && a.chebiId === b.chebiId) || a.name === b.name || (!!a.abbreviation && a.abbreviation === b.abbreviation);
+    const outMets = mets(outputs);
+    const isTransport = mets(inputs).some((i) => outMets.some((o) => o.compartmentId !== i.compartmentId && sameEntity(i, o)));
 
     const rheaIds = [
       ...new Set(
@@ -390,6 +391,7 @@ async function main() {
       reverseSource: reverseId && stIdByDbId.get(reverseId) ? "reactome" : undefined,
       enzymeIds: [...new Set(enz.map((e) => e.id))],
       ecNumbers,
+      catalysis,
       compartmentIds,
       pathwayIds: pathwaysOfReaction.get(r.dbId) ?? [],
       regulation,

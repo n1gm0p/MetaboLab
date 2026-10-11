@@ -47,4 +47,22 @@ describe.skipIf(!hasDataset)("generated dataset (public/data)", () => {
     const res = findRoutes(index, glc, pyr, { mode: "strict", k: 3, maxSteps: 20 });
     expect(res.paths.length).toBeGreaterThan(0);
   });
+
+  it("reaction EC numbers come from that reaction's own catalyst activities (regression)", () => {
+    const ds = raw as Dataset;
+    for (const r of ds.reactions) {
+      const own = [...new Set((r.catalysis ?? []).flatMap((c) => c.ecNumbers))].sort();
+      expect([...r.ecNumbers].sort(), r.id).toEqual(own);
+    }
+    // ALOX12 also has a 5.4.4.7 activity elsewhere; it must not leak into this reaction
+    expect(ds.reactions.find((r) => r.id === "R-HSA-2161948")?.ecNumbers).toEqual(["1.13.11.31"]);
+  });
+
+  it("translocations are flagged as transport even when the two forms have different ChEBI ids (regression)", () => {
+    const ds = raw as Dataset;
+    // GSH: cytosolic and extracellular forms are different ChEBI entities in Reactome
+    expect(ds.reactions.find((r) => r.id === "R-HSA-1247915")?.isTransport).toBe(true);
+    // a chemical conversion inside one compartment is not transport
+    expect(ds.reactions.find((r) => r.id === "R-HSA-70471")?.isTransport).toBe(false);
+  });
 });

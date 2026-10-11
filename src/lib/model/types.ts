@@ -75,6 +75,13 @@ export interface Regulation {
   sources: SourceRef[];
 }
 
+export interface CatalysisRecord {
+  enzymeId: string;
+  /** GO molecular function name */
+  activity?: string;
+  ecNumbers: string[];
+}
+
 export type ReactionCategory =
   | "transition"
   | "binding"
@@ -104,7 +111,10 @@ export interface Reaction {
    */
   reverseSource?: "reactome" | "inferred";
   enzymeIds: string[];
+  /** EC numbers of THIS reaction's catalyst activities (not of everything the catalyst does) */
   ecNumbers: string[];
+  /** catalyst activities as recorded for this reaction (GO molecular function + EC) */
+  catalysis?: CatalysisRecord[];
   compartmentIds: string[];
   pathwayIds: string[];
   regulation: Regulation[];
