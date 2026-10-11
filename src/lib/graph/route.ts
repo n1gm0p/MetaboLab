@@ -69,7 +69,18 @@ interface Arc {
   /** concrete metabolite ids inside the reaction */
   fromMet: string;
   toMet: string;
+  /** step cost: lumped / uncertain events cost more than explicit reactions */
+  weight: number;
 }
+
+/** Reactome "black box" / omitted-step events summarise several reactions; prefer explicit steps. */
+const LUMPED_WEIGHT = 4;
+/**
+ * Extra cost when the step has another non-currency substrate. Without atom mapping a pairing such as
+ * "G6P + 1,3-BPG -> G1,6BP + 3PG" would otherwise let the search jump G6P -> 3PG. This only ranks
+ * routes; such steps are still allowed and their co-substrates are always shown.
+ */
+const CO_SUBSTRATE_PENALTY = 5;
 
 type Adjacency = Map<string, Arc[]>;
 
@@ -109,13 +120,17 @@ export function buildAdjacency(index: MetaboIndex, mode: RouteMode, excludeCurre
     const ins = r.inputs.map((p) => p.metaboliteId).filter(carrier);
     const outs = r.outputs.map((p) => p.metaboliteId).filter(carrier);
     const backward = mode === "relaxed" || r.reversible;
+    const weight = r.category === "black-box" || r.category === "omitted" || r.category === "uncertain" ? LUMPED_WEIGHT : 1;
+    const fwdPenalty = ins.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
+    const bwdPenalty = outs.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
     for (const i of ins) {
       for (const o of outs) {
         if (i === o) continue;
         const ki = nodeKey(index, i, mode);
         const ko = nodeKey(index, o, mode);
-        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o });
-        if (backward) add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i });
+        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o, weight: weight + fwdPenalty });
+        if (backward)
+          add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i, weight: weight + bwdPenalty });
       }
     }
   }
@@ -130,8 +145,49 @@ interface RawPath {
   arcs: Arc[];
 }
 
-/** Unweighted BFS (every reaction step costs 1). */
-function bfs(
+const pathCost = (p: RawPath) => p.arcs.reduce((sum, a) => sum + a.weight, 0);
+
+/** Minimal binary heap keyed by cost. */
+class MinHeap<T> {
+  private items: { cost: number; value: T }[] = [];
+  get size() {
+    return this.items.length;
+  }
+  push(cost: number, value: T) {
+    const a = this.items;
+    a.push({ cost, value });
+    let i = a.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (a[parent]!.cost <= a[i]!.cost) break;
+      [a[parent], a[i]] = [a[i]!, a[parent]!];
+      i = parent;
+    }
+  }
+  pop(): { cost: number; value: T } | undefined {
+    const a = this.items;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length > 0 && last) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < a.length && a[l]!.cost < a[m]!.cost) m = l;
+        if (r < a.length && a[r]!.cost < a[m]!.cost) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i]!, a[m]!];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+/** Dijkstra over weighted steps with a hop limit. */
+function shortestPath(
   getArcs: (n: string) => Arc[],
   start: string,
   goal: string,
@@ -139,31 +195,37 @@ function bfs(
   removedArcs: ReadonlySet<string>,
   maxDepth: number,
 ): RawPath | null {
-  const prev = new Map<string, { node: string; arc: Arc } | null>([[start, null]]);
-  let frontier = [start];
-  for (let depth = 0; depth <= maxDepth && frontier.length; depth++) {
-    const next: string[] = [];
-    for (const n of frontier) {
-      if (n === goal) {
-        const nodes: string[] = [];
-        const arcs: Arc[] = [];
-        let cur: string | undefined = n;
-        while (cur !== undefined) {
-          nodes.push(cur);
-          const p = prev.get(cur);
-          if (!p) break;
-          arcs.push(p.arc);
-          cur = p.node;
-        }
-        return { nodes: nodes.reverse(), arcs: arcs.reverse() };
+  const best = new Map<string, number>([[start, 0]]);
+  const prev = new Map<string, { node: string; arc: Arc }>();
+  const hops = new Map<string, number>([[start, 0]]);
+  const heap = new MinHeap<string>();
+  heap.push(0, start);
+  while (heap.size) {
+    const { cost, value: n } = heap.pop()!;
+    if (cost > (best.get(n) ?? Infinity)) continue;
+    if (n === goal) {
+      const nodes = [n];
+      const arcs: Arc[] = [];
+      let cur = n;
+      for (let p = prev.get(cur); p; p = prev.get(cur)) {
+        arcs.push(p.arc);
+        nodes.push(p.node);
+        cur = p.node;
       }
-      for (const a of getArcs(n)) {
-        if (prev.has(a.to) || removedNodes.has(a.to) || removedArcs.has(arcId(n, a))) continue;
+      return { nodes: nodes.reverse(), arcs: arcs.reverse() };
+    }
+    const h = hops.get(n)!;
+    if (h >= maxDepth) continue;
+    for (const a of getArcs(n)) {
+      if (removedNodes.has(a.to) || removedArcs.has(arcId(n, a))) continue;
+      const c = cost + a.weight;
+      if (c < (best.get(a.to) ?? Infinity)) {
+        best.set(a.to, c);
         prev.set(a.to, { node: n, arc: a });
-        next.push(a.to);
+        hops.set(a.to, h + 1);
+        heap.push(c, a.to);
       }
     }
-    frontier = next;
   }
   return null;
 }
@@ -184,7 +246,7 @@ export function findRoutes(
   const targetKeys = new Set(targetIds.map((t) => nodeKey(index, t, opts.mode)));
   const excludedMetKeys = new Set([...(opts.excludedMetaboliteIds ?? [])].map((m) => nodeKey(index, m, opts.mode)));
 
-  const virtualArc = (to: string): Arc => ({ to, reactionId: "", direction: "forward", fromMet: "", toMet: "" });
+  const virtualArc = (to: string): Arc => ({ to, reactionId: "", direction: "forward", fromMet: "", toMet: "", weight: 0 });
   const getArcs = (n: string): Arc[] => {
     if (n === SUPER_SOURCE) return sourceKeys.map(virtualArc);
     const arcs = (adj.get(n) ?? []).filter(
@@ -199,14 +261,17 @@ export function findRoutes(
   // Source equals target: nothing to search.
   if (sourceKeys.some((s) => targetKeys.has(s))) return result;
 
-  const first = bfs(getArcs, SUPER_SOURCE, SUPER_TARGET, new Set(), new Set(), maxDepth);
+  const first = shortestPath(getArcs, SUPER_SOURCE, SUPER_TARGET, new Set(), new Set(), maxDepth);
   if (!first) return result;
   const A: RawPath[] = [first];
   const B: RawPath[] = [];
   const pathKey = (p: RawPath) => p.arcs.map((a, i) => arcId(p.nodes[i]!, a)).join("|");
   const known = new Set([pathKey(first)]);
 
-  while (A.length < opts.k) {
+  // Search more raw paths than requested: variants differing only by isoenzyme reactions are
+  // merged below so that the user sees genuinely different sequences of compounds.
+  const rawLimit = opts.k * 4;
+  while (A.length < rawLimit) {
     const last = A[A.length - 1]!;
     for (let i = 0; i < last.nodes.length - 1; i++) {
       const spur = last.nodes[i]!;
@@ -220,7 +285,7 @@ export function findRoutes(
         }
       }
       const removedNodes = new Set(rootNodes.slice(0, -1));
-      const spurPath = bfs(getArcs, spur, SUPER_TARGET, removedNodes, removedArcs, maxDepth - i);
+      const spurPath = shortestPath(getArcs, spur, SUPER_TARGET, removedNodes, removedArcs, maxDepth - i);
       if (!spurPath) continue;
       const total: RawPath = { nodes: [...rootNodes.slice(0, -1), ...spurPath.nodes], arcs: [...rootArcs, ...spurPath.arcs] };
       const key = pathKey(total);
@@ -229,13 +294,20 @@ export function findRoutes(
       B.push(total);
     }
     if (B.length === 0) break;
-    B.sort((a, b) => a.arcs.length - b.arcs.length);
+    B.sort((a, b) => pathCost(a) - pathCost(b) || a.arcs.length - b.arcs.length);
     A.push(B.shift()!);
   }
 
-  result.paths = A.map((p) => toRoutePath(index, p, excludeCurrency)).filter(
-    (p) => p.steps.length > 0 && p.steps.length <= opts.maxSteps,
-  );
+  const seenSequences = new Set<string>();
+  for (const raw of A) {
+    const p = toRoutePath(index, raw, excludeCurrency);
+    if (p.steps.length === 0 || p.steps.length > opts.maxSteps) continue;
+    const seq = p.metaboliteIds.join(">");
+    if (seenSequences.has(seq)) continue;
+    seenSequences.add(seq);
+    result.paths.push(p);
+    if (result.paths.length >= opts.k) break;
+  }
   return result;
 }
 

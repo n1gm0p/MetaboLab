@@ -120,6 +120,8 @@ export interface Enzyme {
   ecNumbers: string[];
   /** GO molecular function of the catalyst activity */
   activity?: string;
+  /** curated Russian name of the EC activity (not of the catalyst entity itself) */
+  activityRu?: string;
   /** small-molecule components of the catalyst (e.g. Mg2+, FAD) — from source complex composition */
   cofactorIds: string[];
   reactionIds: string[];

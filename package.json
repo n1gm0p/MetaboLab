@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "import:reactome": "node scripts/import/import-reactome.mjs",
-    "validate:data": "node --experimental-strip-types scripts/validate-data.ts"
+    "import:reactome:fast": "node scripts/import/import-reactome.mjs --no-chebi"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.2.0",

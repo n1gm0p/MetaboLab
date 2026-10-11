@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { TriangleAlert, X } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import type { Dataset } from "@/lib/model/types";
 import { buildIndex } from "@/lib/data/metabo-index";
@@ -12,7 +13,8 @@ import { DetailPanel } from "@/components/details/DetailPanel";
 import { MapView } from "@/components/map/MapView";
 import { cx } from "@/components/ui/primitives";
 
-export function MetaboMapApp({ dataset }: { dataset: Dataset }) {
+export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?: string }) {
+  const [showWarning, setShowWarning] = useState(!!warning);
   const index = useMemo(() => buildIndex(dataset), [dataset]);
   const searchIndex = useMemo(() => buildSearchIndex(index), [index]);
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -37,6 +39,15 @@ export function MetaboMapApp({ dataset }: { dataset: Dataset }) {
           <TopBar />
           <main className="relative min-h-0 flex-1">
             <MapView />
+            {showWarning && warning && (
+              <div role="alert" className="glass absolute left-1/2 top-14 z-30 flex max-w-[min(560px,calc(100vw-24px))] -translate-x-1/2 items-start gap-2 rounded-xl px-3 py-2 text-[13px] text-warn">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="flex-1">{warning}</span>
+                <button type="button" aria-label="Скрыть" onClick={() => setShowWarning(false)} className="grid h-6 w-6 place-items-center rounded-md hover:bg-hover">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
             <aside
               aria-label="Навигация"
               className={cx(

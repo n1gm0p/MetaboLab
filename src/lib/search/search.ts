@@ -93,11 +93,12 @@ export function buildSearchIndex(index: MetaboIndex): SearchIndex {
       type: "enzyme",
       id: e.id,
       title: e.nameRu ?? e.name,
-      subtitle: [e.genes.slice(0, 6).join(", "), e.ecNumbers.map((x) => `EC ${x}`).join(", ")].filter(Boolean).join(" · "),
+      subtitle: [e.activityRu, e.genes.slice(0, 6).join(", "), e.ecNumbers.map((x) => `EC ${x}`).join(", ")].filter(Boolean).join(" · "),
       terms: [
         ...term(e.nameRu, 1.0),
         ...term(e.name, 1.0),
         ...term(e.activity, 0.8),
+        ...term(e.activityRu, 0.9),
         ...e.genes.flatMap((g) => term(g, 0.95)),
         ...e.synonyms.flatMap((s) => term(s, 0.85)),
         ...e.ecNumbers.flatMap((x) => [...term(x, 0.95), ...term(`EC ${x}`, 0.95)]),

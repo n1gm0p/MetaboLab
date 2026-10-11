@@ -19,7 +19,7 @@ export function EnzymeCard({ id }: { id: string }) {
       <CardHeader
         kicker="Фермент / катализатор"
         title={(state.preferRu && e.nameRu) || e.name}
-        subtitle={state.preferRu && e.nameRu ? e.name : undefined}
+        subtitle={e.activityRu ? `Активность: ${e.activityRu}` : state.preferRu && e.nameRu ? e.name : undefined}
         hideTitle={state.quizMode}
         chips={
           <>
@@ -61,7 +61,10 @@ export function EnzymeCard({ id }: { id: string }) {
           {e.activity && (
             <>
               <dt className="text-muted">Активность (GO)</dt>
-              <dd className="text-ink-2">{e.activity}</dd>
+              <dd className="text-ink-2">
+                {e.activity}
+                {e.activityRu && <span className="block text-muted">{e.activityRu} (по номеру EC)</span>}
+              </dd>
             </>
           )}
           {e.ecNumbers.length > 0 && (

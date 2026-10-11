@@ -71,6 +71,7 @@ const enzyme = z.object({
   genes: z.array(z.string()),
   ecNumbers: z.array(z.string()),
   activity: z.string().optional(),
+  activityRu: z.string().optional(),
   cofactorIds: z.array(z.string()),
   reactionIds: z.array(z.string()),
   compartmentIds: z.array(z.string()),

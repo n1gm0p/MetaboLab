@@ -87,4 +87,28 @@ describe("route search", () => {
     const res = findRoutes(buildIndex(ds), ["A_c", "A_m"], ["B"], strict);
     expect(res.paths[0]!.metaboliteIds).toEqual(["A_m", "B"]);
   });
+
+  it("prefers explicit reactions over a lumped black-box shortcut", () => {
+    const ds = dataset(
+      [met("A"), met("B"), met("C"), met("D")],
+      [
+        rxn("BOX", [["A"]], [["D"]], { category: "black-box" }),
+        rxn("AB", [["A"]], [["B"]]),
+        rxn("BC", [["B"]], [["C"]]),
+        rxn("CD", [["C"]], [["D"]]),
+      ],
+    );
+    const res = findRoutes(buildIndex(ds), ["A"], ["D"], { ...strict, k: 2 });
+    expect(res.paths[0]!.steps.map((s) => s.reactionId)).toEqual(["AB", "BC", "CD"]);
+    expect(res.paths[1]!.steps.map((s) => s.reactionId)).toEqual(["BOX"]);
+  });
+
+  it("merges variants that differ only by isoenzyme reactions", () => {
+    const ds = dataset(
+      [met("A"), met("B")],
+      [rxn("ISO1", [["A"]], [["B"]]), rxn("ISO2", [["A"]], [["B"]])],
+    );
+    const res = findRoutes(buildIndex(ds), ["A"], ["B"], { ...strict, k: 5 });
+    expect(res.paths).toHaveLength(1);
+  });
 });

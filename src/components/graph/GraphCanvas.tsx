@@ -293,12 +293,15 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     return () => clearTimeout(t);
   }, [props.routePath]);
 
+  // Cytoscape forces `position: relative` on its container, so it gets an explicitly sized wrapper.
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 touch-none select-none"
-      role="application"
-      aria-label="Интерактивная карта метаболизма. Нажмите на узел, чтобы открыть карточку; двойное нажатие — раскрыть связи."
-    />
+    <div className="absolute inset-0">
+      <div
+        ref={containerRef}
+        className="h-full w-full touch-none select-none"
+        role="application"
+        aria-label="Интерактивная карта метаболизма. Нажмите на узел, чтобы открыть карточку; двойное нажатие — раскрыть связи."
+      />
+    </div>
   );
 }

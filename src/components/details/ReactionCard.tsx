@@ -94,7 +94,12 @@ export function ReactionCard({ id }: { id: string }) {
                     {e.nameRu ?? e.name}
                   </button>
                   {e.genes.length > 0 && <div className="mt-0.5 text-[12px] text-muted">Гены: {e.genes.join(", ")}</div>}
-                  {e.activity && <div className="mt-0.5 text-[12px] text-muted">Активность (GO): {e.activity}</div>}
+                  {e.activity && (
+                    <div className="mt-0.5 text-[12px] text-muted">
+                      Активность (GO): {e.activity}
+                      {e.activityRu && ` — ${e.activityRu}`}
+                    </div>
+                  )}
                   {e.cofactorIds.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[12px]">
                       <span className="text-muted">Кофакторы в составе:</span>

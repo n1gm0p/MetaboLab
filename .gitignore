@@ -7,3 +7,5 @@ next-env.d.ts
 .vercel
 scripts/import/.cache/
 npm-debug.log*
+scripts/import/import.log
+.claude/
