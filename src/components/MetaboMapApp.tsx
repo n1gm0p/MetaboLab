@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { TriangleAlert, X } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import type { Dataset } from "@/lib/model/types";
@@ -21,12 +21,17 @@ export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?:
   const searchIndex = useMemo(() => buildSearchIndex(index), [index]);
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // On tablets/phones there is no room for both side panels next to the map.
+  // On tablets/phones there is no room for both side panels next to the map:
+  // whichever panel was opened last wins.
+  const prevLeft = useRef(state.leftOpen);
   useEffect(() => {
-    if (state.rightOpen && state.leftOpen && window.matchMedia("(max-width: 1099px)").matches) {
-      dispatch({ type: "setLeftOpen", value: false });
-    }
-  }, [state.rightOpen, state.focus]);
+    const narrow = window.matchMedia("(max-width: 1099px)").matches;
+    const leftJustOpened = state.leftOpen && !prevLeft.current;
+    prevLeft.current = state.leftOpen;
+    if (!narrow || !state.leftOpen || !state.rightOpen) return;
+    if (leftJustOpened) dispatch({ type: "setRightOpen", value: false });
+    else dispatch({ type: "setLeftOpen", value: false });
+  }, [state.leftOpen, state.rightOpen, state.focus]);
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 767px)").matches) dispatch({ type: "setLeftOpen", value: false });

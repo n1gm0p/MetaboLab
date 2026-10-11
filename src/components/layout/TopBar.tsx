@@ -21,18 +21,29 @@ export function TopBar() {
         <span className="text-[15px] font-semibold tracking-tight">MetaboMap</span>
       </div>
 
-      <div className="mx-auto w-full max-w-xl">
+      <div className="mx-auto min-w-0 w-full max-w-xl">
         <SearchBox onPick={(ref) => nav.open(ref)} globalShortcut showFilters />
       </div>
 
       <IconButton label="Маршрут между веществами" active={state.leftOpen && state.leftTab === "route"} onClick={() => dispatch({ type: "setLeftTab", tab: "route" })}>
         <Waypoints className="h-[18px] w-[18px]" />
       </IconButton>
-      <IconButton label={state.quizMode ? "Выключить самопроверку" : "Режим самопроверки"} active={state.quizMode} onClick={() => dispatch({ type: "setQuiz", value: !state.quizMode })}>
+      <IconButton
+        label={state.quizMode ? "Выключить самопроверку" : "Режим самопроверки"}
+        active={state.quizMode}
+        className="max-sm:hidden"
+        onClick={() => dispatch({ type: "setQuiz", value: !state.quizMode })}
+      >
         <GraduationCap className="h-[18px] w-[18px]" />
       </IconButton>
       <SettingsPopover />
-      <IconButton label={state.rightOpen ? "Скрыть карточку" : "Показать карточку"} active={state.rightOpen} disabled={!state.focus} onClick={() => dispatch({ type: "setRightOpen", value: !state.rightOpen })}>
+      <IconButton
+        label={state.rightOpen ? "Скрыть карточку" : "Показать карточку"}
+        active={state.rightOpen}
+        disabled={!state.focus}
+        className="max-sm:hidden"
+        onClick={() => dispatch({ type: "setRightOpen", value: !state.rightOpen })}
+      >
         <PanelRight className="h-[18px] w-[18px]" />
       </IconButton>
     </header>

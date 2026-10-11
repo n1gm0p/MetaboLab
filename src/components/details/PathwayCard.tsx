@@ -89,7 +89,7 @@ export function PathwayCard({ id }: { id: string }) {
           <Section title="Выходы пути" count={boundary.outputs.length} accent="out">
             {boundary.outputs.length ? metList(boundary.outputs) : <p className="text-[13px] text-muted">Нет</p>}
             <p className="mt-2 text-[11px] text-faint">
-              Вычислено по реакциям пути: вещества, которые только расходуются (входы) или только образуются (выходы); кофакторы исключены.
+              Вычислено по реакциям пути: малые молекулы, которые только расходуются (входы) или только образуются (выходы); кофакторы и белки исключены.
             </p>
           </Section>
         </>

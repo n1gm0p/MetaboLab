@@ -100,6 +100,16 @@ export function useSessionPersistence(
     state.hiddenCompartmentIds,
   ]);
 
+  // links opened while the app is running (hash change without reload)
+  useEffect(() => {
+    const onHash = () => {
+      const ref = parseHash(window.location.hash);
+      if (ref && exists(index, ref)) openFromHash(ref);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [index, openFromHash]);
+
   // URL hash mirrors the selected entity
   useEffect(() => {
     if (!restored.current) return;

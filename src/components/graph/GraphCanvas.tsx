@@ -11,6 +11,8 @@ import type { EntityRef } from "@/lib/model/types";
 import type { LayoutMode } from "@/components/state/app-state";
 import { buildStylesheet, compartmentColor, readPalette } from "./graph-style";
 
+const isTouch = () => window.matchMedia("(pointer: coarse)").matches;
+
 let registered = false;
 function ensureExtensions() {
   if (registered) return;
@@ -46,12 +48,24 @@ function displayLabel(n: GraphNode, quiz: boolean): string {
   return n.currency ? n.label : "?";
 }
 
+/** Node width from label length (cytoscape's `width: label` is deprecated). */
+function nodeWidth(n: GraphNode, label: string): number {
+  if (n.kind !== "metabolite") return 16;
+  const shown = Math.min(label.length, 26);
+  return n.currency ? Math.max(24, shown * 5.6 + 12) : Math.max(36, shown * 6.6 + 22);
+}
+
 function toElements(model: GraphModel, quiz: boolean): ElementDefinition[] {
   const currencyNodes = new Set(model.nodes.filter((n) => n.currency).map((n) => n.id));
   return [
     ...model.nodes.map((n) => ({
       group: "nodes" as const,
-      data: { ...n, display: displayLabel(n, quiz), color: compartmentColor(n.compartmentId) },
+      data: {
+        ...n,
+        display: displayLabel(n, quiz),
+        w: nodeWidth(n, displayLabel(n, quiz)),
+        color: compartmentColor(n.compartmentId),
+      },
     })),
     ...model.edges.map((e) => ({
       group: "edges" as const,
@@ -112,7 +126,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     if (!el) return;
     const cy = cytoscape({
       container: el,
-      style: buildStylesheet(readPalette(el)),
+      style: buildStylesheet(readPalette(el), isTouch()),
       minZoom: 0.08,
       maxZoom: 3,
       boxSelectionEnabled: false,
@@ -156,7 +170,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   useEffect(() => {
     const cy = cyRef.current;
     const el = containerRef.current;
-    if (cy && el && themeTick > 0) cy.style(buildStylesheet(readPalette(el)));
+    if (cy && el && themeTick > 0) cy.style(buildStylesheet(readPalette(el), isTouch()));
   }, [themeTick]);
 
   // --- sync elements (diff) + layout ---
@@ -200,7 +214,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     if (!cy) return;
     cy.batch(() => {
       cy.nodes().forEach((n) => {
-        n.data("display", displayLabel(n.data() as GraphNode, props.quizMode));
+        const label = displayLabel(n.data() as GraphNode, props.quizMode);
+        n.data({ display: label, w: nodeWidth(n.data() as GraphNode, label) });
       });
     });
   }, [props.quizMode]);

@@ -68,3 +68,17 @@ describe("mock dataset", () => {
     expect(checkIntegrity(mockDataset)).toEqual([]);
   });
 });
+
+describe("pathway analysis", () => {
+  it("computes inputs/outputs from small molecules only", async () => {
+    const { pathwayBoundary } = await import("@/lib/data/pathway-analysis");
+    const ds = dataset(
+      [met("A"), met("B"), met("C"), met("ENZ", { kind: "complex" }), met("H2O", { currency: true })],
+      [rxn("R1", [["A"], ["ENZ"], ["H2O"]], [["B"]]), rxn("R2", [["B"]], [["C"], ["ENZ"]])],
+    );
+    ds.pathways = [{ id: "P", name: "P", reactionIds: ["R1", "R2"], subpathwayIds: [], parentIds: [], sources: [] }];
+    ds.reactions.forEach((r) => (r.pathwayIds = ["P"]));
+    const b = pathwayBoundary(buildIndex(ds), "P");
+    expect(b).toEqual({ inputs: ["A"], outputs: ["C"] });
+  });
+});

@@ -25,9 +25,10 @@ export function pathwayBoundary(index: MetaboIndex, pathwayId: string): PathwayB
       for (const p of r.outputs) consumed.add(p.metaboliteId);
     }
   }
+  // proteins and complexes participate in reactions but are not metabolic inputs/outputs
   const relevant = (id: string) => {
     const m = index.metabolites.get(id);
-    return !!m && !m.currency;
+    return !!m && !m.currency && (m.kind === "small-molecule" || m.kind === "set");
   };
   return {
     inputs: [...consumed].filter((m) => !produced.has(m) && relevant(m)),
@@ -51,7 +52,8 @@ export function linkedPathways(index: MetaboIndex, pathwayId: string, limit = 12
   for (const rid of own) {
     const r = index.reactions.get(rid);
     for (const p of [...(r?.inputs ?? []), ...(r?.outputs ?? [])]) {
-      if (!index.metabolites.get(p.metaboliteId)?.currency) mets.add(p.metaboliteId);
+      const m = index.metabolites.get(p.metaboliteId);
+      if (m && !m.currency && (m.kind === "small-molecule" || m.kind === "set")) mets.add(p.metaboliteId);
     }
   }
   const ancestors = new Set<string>();

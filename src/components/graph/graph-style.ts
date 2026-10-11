@@ -56,12 +56,15 @@ export function readPalette(el: HTMLElement): Palette {
   };
 }
 
-export function buildStylesheet(p: Palette): StylesheetJson {
+export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
+  // larger targets for fingers (iPad / phones)
+  const rxnSize = touch ? 22 : 16;
+  const metHeight = touch ? 32 : 26;
   return [
     {
       selector: "node",
       style: {
-        "font-family": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        "font-family": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
         "transition-property": "opacity, border-width, background-color, border-color",
         "transition-duration": 150,
       },
@@ -70,10 +73,8 @@ export function buildStylesheet(p: Palette): StylesheetJson {
       selector: "node[kind = 'metabolite']",
       style: {
         shape: "round-rectangle",
-        width: "label",
-        height: 26,
-        "padding-left": "10px",
-        "padding-right": "10px",
+        width: "data(w)",
+        height: metHeight,
         "background-color": p.node,
         "border-width": 1.5,
         "border-color": "data(color)",
@@ -92,8 +93,6 @@ export function buildStylesheet(p: Palette): StylesheetJson {
       style: {
         height: 18,
         "font-size": 9,
-        "padding-left": "5px",
-        "padding-right": "5px",
         "border-width": 1,
         "border-style": "dashed",
         color: p.muted,
@@ -103,8 +102,8 @@ export function buildStylesheet(p: Palette): StylesheetJson {
       selector: "node[kind = 'reaction']",
       style: {
         shape: "round-diamond",
-        width: 16,
-        height: 16,
+        width: rxnSize,
+        height: rxnSize,
         "background-color": p.muted,
         "border-width": 0,
         label: "data(display)",
