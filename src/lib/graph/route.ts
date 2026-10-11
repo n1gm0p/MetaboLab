@@ -81,6 +81,20 @@ const LUMPED_WEIGHT = 4;
  * routes; such steps are still allowed and their co-substrates are always shown.
  */
 const CO_SUBSTRATE_PENALTY = 5;
+/**
+ * In exchange reactions (>= 2 main substrates and >= 2 main products, e.g. transamination
+ * Ala + 2-OG -> Pyr + Glu) a substrate is paired preferentially with the product(s) whose carbon
+ * count is closest; other pairings are kept but ranked much lower.
+ */
+const CARBON_MISMATCH_PENALTY = 10;
+
+/** Number of carbon atoms from a Hill formula; undefined when unknown. */
+export function carbonCount(formula: string | undefined): number | undefined {
+  if (!formula) return undefined;
+  const m = formula.match(/C(?![a-z])(\d*)/);
+  if (!m) return 0;
+  return m[1] ? Number(m[1]) : 1;
+}
 
 type Adjacency = Map<string, Arc[]>;
 
@@ -123,14 +137,28 @@ export function buildAdjacency(index: MetaboIndex, mode: RouteMode, excludeCurre
     const weight = r.category === "black-box" || r.category === "omitted" || r.category === "uncertain" ? LUMPED_WEIGHT : 1;
     const fwdPenalty = ins.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
     const bwdPenalty = outs.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
+    const exchange = ins.length >= 2 && outs.length >= 2;
+    const carbons = (id: string) => carbonCount(index.metabolites.get(id)?.formula);
+    /** true when `a` -> `b` is not among the closest carbon-count pairings of `a` */
+    const mismatch = (a: string, candidates: string[], b: string) => {
+      if (!exchange) return false;
+      const ca = carbons(a);
+      const cb = carbons(b);
+      if (ca === undefined || cb === undefined) return false;
+      const diffs = candidates.map((c) => carbons(c)).filter((c): c is number => c !== undefined).map((c) => Math.abs(c - ca));
+      return Math.abs(cb - ca) > Math.min(...diffs);
+    };
     for (const i of ins) {
       for (const o of outs) {
         if (i === o) continue;
         const ki = nodeKey(index, i, mode);
         const ko = nodeKey(index, o, mode);
-        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o, weight: weight + fwdPenalty });
-        if (backward)
-          add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i, weight: weight + bwdPenalty });
+        const fw = weight + fwdPenalty + (mismatch(i, outs, o) ? CARBON_MISMATCH_PENALTY : 0);
+        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o, weight: fw });
+        if (backward) {
+          const bw = weight + bwdPenalty + (mismatch(o, ins, i) ? CARBON_MISMATCH_PENALTY : 0);
+          add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i, weight: bw });
+        }
       }
     }
   }

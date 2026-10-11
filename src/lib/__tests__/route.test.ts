@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildIndex } from "@/lib/data/metabo-index";
-import { findRoutes } from "@/lib/graph/route";
+import { carbonCount, findRoutes } from "@/lib/graph/route";
 import { mockDataset } from "@/lib/data/mock-dataset";
 import { CYTOSOL, MATRIX, dataset, met, rxn } from "./fixtures";
 
@@ -110,5 +110,31 @@ describe("route search", () => {
     );
     const res = findRoutes(buildIndex(ds), ["A"], ["B"], { ...strict, k: 5 });
     expect(res.paths).toHaveLength(1);
+  });
+
+  it("pairs substrates and products of exchange reactions by carbon count (transamination)", () => {
+    // Ala + 2-OG -> Pyr + Glu; also a direct (longer) way 2-OG -> X -> Pyr
+    const ds = dataset(
+      [
+        met("ala", { formula: "C3H7NO2" }),
+        met("akg", { formula: "C5H4O5" }),
+        met("pyr", { formula: "C3H3O3" }),
+        met("glu", { formula: "C5H8NO4" }),
+      ],
+      [rxn("ALT", [["ala"], ["akg"]], [["pyr"], ["glu"]])],
+    );
+    const res = findRoutes(buildIndex(ds), ["ala"], ["pyr"], strict);
+    expect(res.paths[0]!.steps[0]!.coSubstrates.map((p) => p.metaboliteId)).toEqual(["akg"]);
+    // the carbon-mismatched pairing is still possible, but only as a lower-ranked option
+    const odd = findRoutes(buildIndex(ds), ["akg"], ["pyr"], strict);
+    expect(odd.paths).toHaveLength(1);
+  });
+
+  it("reads carbon counts from Hill formulas", () => {
+    expect(carbonCount("C6H12O6")).toBe(6);
+    expect(carbonCount("CO2")).toBe(1);
+    expect(carbonCount("HCl")).toBe(0);
+    expect(carbonCount("CaCl2")).toBe(0);
+    expect(carbonCount(undefined)).toBeUndefined();
   });
 });

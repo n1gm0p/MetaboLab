@@ -16,6 +16,12 @@ export interface MapContext {
   refId?: string;
 }
 
+export interface RouteEndpoint {
+  metaboliteId: string;
+  /** use every compartment-specific form of the same ChEBI compound */
+  anyCompartment: boolean;
+}
+
 export interface AppState {
   /** reactions currently drawn on the map */
   visibleReactionIds: string[];
@@ -34,6 +40,8 @@ export interface AppState {
   expandAnchor?: string;
   activeRoute: RouteResult | null;
   activeRoutePath: number;
+  routeFrom: RouteEndpoint | null;
+  routeTo: RouteEndpoint | null;
   leftTab: LeftTab;
   leftOpen: boolean;
   rightOpen: boolean;
@@ -54,6 +62,8 @@ export const initialState: AppState = {
   fitNonce: 0,
   activeRoute: null,
   activeRoutePath: 0,
+  routeFrom: null,
+  routeTo: null,
   leftTab: "pathways",
   leftOpen: true,
   rightOpen: false,
@@ -76,6 +86,8 @@ export type Action =
   | { type: "fit" }
   | { type: "setRoute"; route: RouteResult | null }
   | { type: "selectRoutePath"; index: number }
+  | { type: "setRouteEndpoint"; end: "from" | "to"; value: RouteEndpoint | null; openPanel?: boolean }
+  | { type: "swapRouteEndpoints" }
   | { type: "setLeftTab"; tab: LeftTab }
   | { type: "setLeftOpen"; value: boolean }
   | { type: "setRightOpen"; value: boolean }
@@ -105,7 +117,12 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         visibleReactionIds: [...set],
-        mapContext: state.mapContext.kind === "empty" ? { kind: "custom", label: "Моя карта" } : state.mapContext,
+        mapContext:
+          state.mapContext.kind === "empty"
+            ? { kind: "custom", label: "Моя карта" }
+            : state.mapContext.kind === "custom"
+              ? state.mapContext
+              : { kind: "custom", label: `${state.mapContext.label} + связи` },
         expandAnchor: action.anchor,
         layoutNonce: state.layoutNonce + 1,
       };
@@ -150,6 +167,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeRoute: action.route, activeRoutePath: 0 };
     case "selectRoutePath":
       return { ...state, activeRoutePath: action.index };
+    case "setRouteEndpoint":
+      return {
+        ...state,
+        [action.end === "from" ? "routeFrom" : "routeTo"]: action.value,
+        ...(action.openPanel ? { leftTab: "route" as const, leftOpen: true } : {}),
+      };
+    case "swapRouteEndpoints":
+      return { ...state, routeFrom: state.routeTo, routeTo: state.routeFrom };
     case "setLeftTab":
       return { ...state, leftTab: action.tab, leftOpen: true };
     case "setLeftOpen":

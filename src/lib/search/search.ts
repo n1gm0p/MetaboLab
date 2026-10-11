@@ -120,6 +120,8 @@ export function buildSearchIndex(index: MetaboIndex): SearchIndex {
 
 function scoreTerm(q: string, qc: string, t: string): number {
   if (t === q) return 100;
+  // whole-word match: "глюкоза" in "d-глюкоза" beats prefix "глюкозамин-6-фосфат"
+  if (t.split(/[\s\-,/]+/).includes(q)) return 90 - Math.min(10, t.length - q.length) * 0.3;
   if (t.startsWith(q)) return 80 - Math.min(20, t.length - q.length) * 0.5;
   // word-start match ("6-phosphate" inside "glucose 6-phosphate")
   const wordIdx = t.search(new RegExp(`(^|[\\s\\-,/])${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
