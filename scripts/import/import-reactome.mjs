@@ -387,6 +387,7 @@ async function main() {
       // Reactome encodes each direction as its own event; a single record is directional.
       reversible: false,
       reverseReactionId: reverseId ? stIdByDbId.get(reverseId) : undefined,
+      reverseSource: reverseId && stIdByDbId.get(reverseId) ? "reactome" : undefined,
       enzymeIds: [...new Set(enz.map((e) => e.id))],
       ecNumbers,
       compartmentIds,
@@ -406,6 +407,17 @@ async function main() {
       details[r.stId] = { id: r.stId, summary: text, summarySource: text ? reactomeRef(r.stId, "Reactome") : undefined, literature: lit };
   }
 
+  // 6a. Reactome reverse links are made symmetric (A->B implies B->A) when B has none.
+  const reactionById = new Map(reactions.map((r) => [r.id, r]));
+  for (const r of reactions) {
+    if (r.reverseSource !== "reactome") continue;
+    const other = reactionById.get(r.reverseReactionId);
+    if (other && !other.reverseReactionId) {
+      other.reverseReactionId = r.id;
+      other.reverseSource = "reactome";
+    }
+  }
+
   // 6b. Reverse pairs: Reactome encodes each direction as its own event. Two reactions whose main
   //     (non-currency) substrates and products are swapped, in the same compartments, are linked.
   const mainKey = (parts) =>
@@ -421,18 +433,30 @@ async function main() {
     if (!bySignature.has(sig)) bySignature.set(sig, []);
     bySignature.get(sig).push(r);
   }
+  // Only unambiguous pairs are linked: exactly one candidate in each direction, both still free.
+  // Isoenzyme duplicates make a pairing ambiguous; those are left unlinked rather than guessed.
   let reversePairs = 0;
+  let ambiguous = 0;
   for (const r of reactions) {
     if (r.reverseReactionId) continue;
     const ins = mainKey(r.inputs);
     const outs = mainKey(r.outputs);
-    if (!ins || !outs) continue;
-    const match = (bySignature.get(`${outs}>${ins}`) ?? []).find((x) => x.id !== r.id);
-    if (match) {
-      r.reverseReactionId = match.id;
-      reversePairs++;
+    if (!ins || !outs || ins === outs) continue;
+    const forward = bySignature.get(`${ins}>${outs}`) ?? [];
+    const backward = (bySignature.get(`${outs}>${ins}`) ?? []).filter((x) => x.id !== r.id);
+    if (backward.length === 0) continue;
+    if (forward.length !== 1 || backward.length !== 1 || backward[0].reverseReactionId) {
+      ambiguous++;
+      continue;
     }
+    const match = backward[0];
+    r.reverseReactionId = match.id;
+    r.reverseSource = "inferred";
+    match.reverseReactionId = r.id;
+    match.reverseSource = "inferred";
+    reversePairs++;
   }
+  console.log(`Ambiguous reverse candidates left unlinked: ${ambiguous}`);
   console.log(`Reverse reaction pairs linked: ${reversePairs}`);
 
   // 7. Pathways
@@ -482,6 +506,8 @@ async function main() {
         definition: definition ?? undefined,
         smiles: asArray(a.smiles_string)[0] ?? undefined,
         inchiKey: asArray(a.inchi_key_string)[0] ?? undefined,
+        charge: Number.isFinite(Number(asArray(a.charge)[0])) && asArray(a.charge).length ? Number(asArray(a.charge)[0]) : undefined,
+        mass: Number.isFinite(Number(asArray(a.mass)[0])) && asArray(a.mass).length ? Number(asArray(a.mass)[0]) : undefined,
         literature: [],
       };
     }
@@ -534,6 +560,7 @@ async function main() {
           `из других видов, помечены в источниках.`,
       },
       detailShards: DETAIL_SHARDS,
+      importer: { script: "scripts/import/import-reactome.mjs", reactomeRelease: version, chebi: withChebi },
     },
     compartments: [...compartments.values()].sort(sortById),
     metabolites: metList.sort(sortById),

@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "import:reactome": "node scripts/import/import-reactome.mjs",
     "import:reactome:fast": "node scripts/import/import-reactome.mjs --no-chebi",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "audit:data": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/audit-data.ts",
+    "data:update": "npm run import:reactome && npm run audit:data"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.2.0",

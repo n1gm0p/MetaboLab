@@ -42,6 +42,7 @@ const reaction = z.object({
   outputs: z.array(participant),
   reversible: z.boolean(),
   reverseReactionId: z.string().optional(),
+  reverseSource: z.enum(["reactome", "inferred"]).optional(),
   enzymeIds: z.array(z.string()),
   ecNumbers: z.array(z.string()),
   compartmentIds: z.array(z.string()),
@@ -104,6 +105,7 @@ export const datasetSchema = z.object({
     ),
     coverage: z.object({ rootPathwayIds: z.array(z.string()), note: z.string() }),
     detailShards: z.number().int().nonnegative(),
+    importer: z.object({ script: z.string(), reactomeRelease: z.string(), chebi: z.boolean() }).optional(),
   }),
   compartments: z.array(compartment),
   metabolites: z.array(metabolite),
@@ -119,6 +121,8 @@ export const recordDetailsSchema = z.object({
   smiles: z.string().optional(),
   inchiKey: z.string().optional(),
   definition: z.string().optional(),
+  charge: z.number().optional(),
+  mass: z.number().optional(),
   literature: z.array(
     z.object({
       title: z.string(),

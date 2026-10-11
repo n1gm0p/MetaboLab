@@ -45,6 +45,9 @@ export const CURRENCY_CHEBI = new Map([
   ["CHEBI:29888", "PPi"],
   ["CHEBI:15996", "GTP"],
   ["CHEBI:17552", "GDP"],
+  // membrane electron carriers (respiratory chain, SDH, ETF)
+  ["CHEBI:46245", "CoQ"],
+  ["CHEBI:64183", "CoQH2"],
   // sulfotransferase cofactor pair
   ["CHEBI:58339", "PAPS"],
   ["CHEBI:58343", "PAP"],

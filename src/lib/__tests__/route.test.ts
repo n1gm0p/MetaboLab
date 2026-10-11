@@ -92,10 +92,10 @@ describe("route search", () => {
     const ds = dataset(
       [met("A"), met("B"), met("C"), met("D")],
       [
-        rxn("BOX", [["A"]], [["D"]], { category: "black-box" }),
-        rxn("AB", [["A"]], [["B"]]),
-        rxn("BC", [["B"]], [["C"]]),
-        rxn("CD", [["C"]], [["D"]]),
+        rxn("BOX", [["A"]], [["D"]], { category: "black-box", enzymeIds: ["E"] }),
+        rxn("AB", [["A"]], [["B"]], { enzymeIds: ["E"] }),
+        rxn("BC", [["B"]], [["C"]], { enzymeIds: ["E"] }),
+        rxn("CD", [["C"]], [["D"]], { enzymeIds: ["E"] }),
       ],
     );
     const res = findRoutes(buildIndex(ds), ["A"], ["D"], { ...strict, k: 2 });
@@ -136,5 +136,42 @@ describe("route search", () => {
     expect(carbonCount("HCl")).toBe(0);
     expect(carbonCount("CaCl2")).toBe(0);
     expect(carbonCount(undefined)).toBeUndefined();
+  });
+
+  it("ranks a catalysed reaction above an uncatalysed side reaction", () => {
+    const ds = dataset(
+      [met("A"), met("B"), met("C")],
+      [rxn("SPONT", [["A"]], [["C"]]), rxn("E1", [["A"]], [["B"]], { enzymeIds: ["E"] }), rxn("E2", [["B"]], [["C"]], { enzymeIds: ["E"] })],
+    );
+    const res = findRoutes(buildIndex(ds), ["A"], ["C"], { ...strict, k: 2 });
+    expect(res.paths[0]!.steps.map((s) => s.reactionId)).toEqual(["E1", "E2"]);
+    expect(res.paths[1]!.steps[0]!.flags).toContain("no-catalyst");
+  });
+
+  it("keeps isoenzyme reactions as alternatives of the same step", () => {
+    const ds = dataset([met("A"), met("B")], [rxn("ISO1", [["A"]], [["B"]]), rxn("ISO2", [["A"]], [["B"]])]);
+    const res = findRoutes(buildIndex(ds), ["A"], ["B"], { ...strict, k: 3 });
+    expect(res.paths).toHaveLength(1);
+    expect(res.paths[0]!.steps[0]!.alternativeReactionIds).toHaveLength(1);
+  });
+
+  it("restricts the search to the reactions of a pathway", () => {
+    const ds = dataset([met("A"), met("B"), met("C")], [rxn("R1", [["A"]], [["B"]]), rxn("R2", [["B"]], [["C"]]), rxn("SHORT", [["A"]], [["C"]])]);
+    const res = findRoutes(buildIndex(ds), ["A"], ["C"], { ...strict, allowedReactionIds: new Set(["R1", "R2"]) });
+    expect(res.paths.map((p) => p.steps.map((s) => s.reactionId))).toEqual([["R1", "R2"]]);
+  });
+
+  it("classifies routes and counts carriers separately for consumption and production", () => {
+    const ds = dataset(
+      [met("A"), met("B"), met("C"), met("ATP", { currency: true, abbreviation: "ATP" }), met("ADP", { currency: true, abbreviation: "ADP" })],
+      [rxn("K", [["A"], ["ATP"]], [["B"], ["ADP"]]), rxn("PK", [["B"], ["ADP", 2]], [["C"], ["ATP", 2]], { category: "black-box" })],
+    );
+    const strictRes = findRoutes(buildIndex(ds), ["A"], ["C"], strict).paths[0]!;
+    expect(strictRes.carriers.consumed).toEqual(expect.arrayContaining([expect.objectContaining({ label: "ATP", amount: 1 }), expect.objectContaining({ label: "ADP", amount: 2 })]));
+    expect(strictRes.carriers.produced).toEqual(expect.arrayContaining([expect.objectContaining({ label: "ATP", amount: 2 })]));
+    expect(strictRes.assessment).toMatchObject({ kind: "strict", incomplete: true });
+    const relaxed = findRoutes(buildIndex(ds), ["C"], ["A"], { ...strict, mode: "relaxed" }).paths[0]!;
+    expect(relaxed.assessment.kind).toBe("topological");
+    expect(relaxed.assessment.reasons[0]).toMatch(/не биохимический/);
   });
 });

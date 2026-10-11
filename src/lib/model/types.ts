@@ -98,6 +98,11 @@ export interface Reaction {
    */
   reversible: boolean;
   reverseReactionId?: string;
+  /**
+   * Where the reverse link comes from: stated by Reactome ("reactome") or found by the importer
+   * because main substrates and products are swapped in the same compartments ("inferred").
+   */
+  reverseSource?: "reactome" | "inferred";
   enzymeIds: string[];
   ecNumbers: string[];
   compartmentIds: string[];
@@ -157,6 +162,10 @@ export interface RecordDetails {
   smiles?: string;
   inchiKey?: string;
   definition?: string; // ChEBI definition
+  /** formal charge of the ChEBI entity (major microspecies used by Reactome) */
+  charge?: number;
+  /** average mass, Da (ChEBI) */
+  mass?: number;
   literature: LiteratureRef[];
 }
 
@@ -178,6 +187,8 @@ export interface DatasetMeta {
     note: string;
   };
   detailShards: number;
+  /** how the dataset was produced (absent in the hand-written demo set) */
+  importer?: { script: string; reactomeRelease: string; chebi: boolean };
 }
 
 export interface Dataset {

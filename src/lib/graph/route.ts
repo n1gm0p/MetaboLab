@@ -1,5 +1,6 @@
 import type { MetaboIndex } from "@/lib/data/metabo-index";
 import type { Participant } from "@/lib/model/types";
+import { elementBalance } from "@/lib/audit/audit";
 
 /**
  * Route search between metabolites over the reaction hypergraph.
@@ -30,10 +31,23 @@ export interface RouteOptions {
   k: number;
   maxSteps: number;
   excludedReactionIds?: ReadonlySet<string>;
+  /** restrict the search to these reactions (e.g. all reactions of one pathway) */
+  allowedReactionIds?: ReadonlySet<string>;
   excludedMetaboliteIds?: ReadonlySet<string>;
   /** treat curated currency metabolites as non-carriers (default true) */
   excludeCurrency?: boolean;
 }
+
+/** Why a step is ranked lower or needs caution. Shown next to the step. */
+export type StepFlag =
+  | "lumped" // Reactome black-box / omitted-steps event
+  | "co-substrate" // another non-currency substrate is required
+  | "carbon-mismatch" // pairing of an exchange reaction with non-matching carbon counts
+  | "transport" // moves the compound between compartments
+  | "no-catalyst" // no catalyst recorded in the source
+  | "unbalanced" // element balance of the record does not close (H ignored)
+  | "class-entity" // step passes through a class of compounds (e.g. "long-chain fatty acid")
+  | "compartment-jump"; // relaxed mode only: compartment changes without transport
 
 export interface RouteStep {
   reactionId: string;
@@ -45,12 +59,52 @@ export interface RouteStep {
   coProducts: Participant[];
   /** relaxed mode only: the previous step ended in another compartment */
   compartmentJump: boolean;
+  flags: StepFlag[];
+  /** ranking cost of this step (1 = plain explicit reaction) */
+  cost: number;
+  /** other reactions that perform the same conversion (isoenzymes, alternative cofactors) */
+  alternativeReactionIds: string[];
+}
+
+export interface CarrierAmount {
+  metaboliteId: string;
+  label: string;
+  amount: number;
+}
+
+/**
+ * Carriers (ATP, NAD(P)H, FADH2, CoA...) consumed and produced by the reactions of a route,
+ * each reaction executed ONCE in the stated direction. Consumption and production are kept
+ * separate (not netted). This is a direct count from the stoichiometry of the records, not a
+ * physiological energy yield: oxidative phosphorylation, P/O ratios and branch multiplicities
+ * are not included.
+ */
+export interface CarrierBalance {
+  consumed: CarrierAmount[];
+  produced: CarrierAmount[];
+  /** some step yields two or more main products (e.g. aldolase), so per-molecule stoichiometry is not scaled */
+  branching: boolean;
+}
+
+export type RouteKind = "strict" | "topological";
+
+export interface RouteAssessment {
+  kind: RouteKind;
+  /** the route relies on lumped events, compound classes, unusual pairings or unbalanced records */
+  incomplete: boolean;
+  /** human-readable reasons (Russian) */
+  reasons: string[];
+  compartmentTransitions: number;
 }
 
 export interface RoutePath {
   steps: RouteStep[];
   /** metabolite ids visited, in order */
   metaboliteIds: string[];
+  /** total ranking cost (lower = preferred) */
+  cost: number;
+  assessment: RouteAssessment;
+  carriers: CarrierBalance;
 }
 
 export interface RouteResult {
@@ -71,6 +125,7 @@ interface Arc {
   toMet: string;
   /** step cost: lumped / uncertain events cost more than explicit reactions */
   weight: number;
+  flags: StepFlag[];
 }
 
 /** Reactome "black box" / omitted-step events summarise several reactions; prefer explicit steps. */
@@ -87,6 +142,12 @@ const CO_SUBSTRATE_PENALTY = 5;
  * count is closest; other pairings are kept but ranked much lower.
  */
 const CARBON_MISMATCH_PENALTY = 10;
+/**
+ * Extra cost for reactions without a recorded catalyst (and not transport): some are genuine
+ * spontaneous steps, but many are side reactions (e.g. non-enzymatic oxidation by H2O2) that
+ * should not outrank the enzymatic route. Ranking only.
+ */
+const NO_CATALYST_PENALTY = 3;
 
 /** Number of carbon atoms from a Hill formula; undefined when unknown. */
 export function carbonCount(formula: string | undefined): number | undefined {
@@ -134,7 +195,8 @@ export function buildAdjacency(index: MetaboIndex, mode: RouteMode, excludeCurre
     const ins = r.inputs.map((p) => p.metaboliteId).filter(carrier);
     const outs = r.outputs.map((p) => p.metaboliteId).filter(carrier);
     const backward = mode === "relaxed" || r.reversible;
-    const weight = r.category === "black-box" || r.category === "omitted" || r.category === "uncertain" ? LUMPED_WEIGHT : 1;
+    const lumped = r.category === "black-box" || r.category === "omitted" || r.category === "uncertain";
+    const weight = (lumped ? LUMPED_WEIGHT : 1) + (r.enzymeIds.length === 0 && !r.isTransport ? NO_CATALYST_PENALTY : 0);
     const fwdPenalty = ins.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
     const bwdPenalty = outs.length > 1 ? CO_SUBSTRATE_PENALTY : 0;
     const exchange = ins.length >= 2 && outs.length >= 2;
@@ -153,11 +215,18 @@ export function buildAdjacency(index: MetaboIndex, mode: RouteMode, excludeCurre
         if (i === o) continue;
         const ki = nodeKey(index, i, mode);
         const ko = nodeKey(index, o, mode);
-        const fw = weight + fwdPenalty + (mismatch(i, outs, o) ? CARBON_MISMATCH_PENALTY : 0);
-        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o, weight: fw });
+        const flagsFor = (penalty: number, mm: boolean): StepFlag[] => [
+          ...(lumped ? (["lumped"] as const) : []),
+          ...(penalty ? (["co-substrate"] as const) : []),
+          ...(mm ? (["carbon-mismatch"] as const) : []),
+        ];
+        const fwMismatch = mismatch(i, outs, o);
+        const fw = weight + fwdPenalty + (fwMismatch ? CARBON_MISMATCH_PENALTY : 0);
+        add(ki, { to: ko, reactionId: r.id, direction: "forward", fromMet: i, toMet: o, weight: fw, flags: flagsFor(fwdPenalty, fwMismatch) });
         if (backward) {
-          const bw = weight + bwdPenalty + (mismatch(o, ins, i) ? CARBON_MISMATCH_PENALTY : 0);
-          add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i, weight: bw });
+          const bwMismatch = mismatch(o, ins, i);
+          const bw = weight + bwdPenalty + (bwMismatch ? CARBON_MISMATCH_PENALTY : 0);
+          add(ko, { to: ki, reactionId: r.id, direction: "backward", fromMet: o, toMet: i, weight: bw, flags: flagsFor(bwdPenalty, bwMismatch) });
         }
       }
     }
@@ -274,11 +343,14 @@ export function findRoutes(
   const targetKeys = new Set(targetIds.map((t) => nodeKey(index, t, opts.mode)));
   const excludedMetKeys = new Set([...(opts.excludedMetaboliteIds ?? [])].map((m) => nodeKey(index, m, opts.mode)));
 
-  const virtualArc = (to: string): Arc => ({ to, reactionId: "", direction: "forward", fromMet: "", toMet: "", weight: 0 });
+  const virtualArc = (to: string): Arc => ({ to, reactionId: "", direction: "forward", fromMet: "", toMet: "", weight: 0, flags: [] });
   const getArcs = (n: string): Arc[] => {
     if (n === SUPER_SOURCE) return sourceKeys.map(virtualArc);
     const arcs = (adj.get(n) ?? []).filter(
-      (a) => !opts.excludedReactionIds?.has(a.reactionId) && !excludedMetKeys.has(a.to),
+      (a) =>
+        !opts.excludedReactionIds?.has(a.reactionId) &&
+        (!opts.allowedReactionIds || opts.allowedReactionIds.has(a.reactionId)) &&
+        !excludedMetKeys.has(a.to),
     );
     if (targetKeys.has(n)) arcs.push(virtualArc(SUPER_TARGET));
     return arcs;
@@ -326,22 +398,48 @@ export function findRoutes(
     A.push(B.shift()!);
   }
 
-  const seenSequences = new Set<string>();
+  const bySequence = new Map<string, RoutePath>();
   for (const raw of A) {
-    const p = toRoutePath(index, raw, excludeCurrency);
+    const p = toRoutePath(index, raw, excludeCurrency, opts.mode);
     if (p.steps.length === 0 || p.steps.length > opts.maxSteps) continue;
     const seq = p.metaboliteIds.join(">");
-    if (seenSequences.has(seq)) continue;
-    seenSequences.add(seq);
+    const existing = bySequence.get(seq);
+    if (existing) {
+      // same chain of compounds via other reactions: keep them as per-step alternatives
+      p.steps.forEach((st, i) => {
+        const target = existing.steps[i];
+        if (target && st.reactionId !== target.reactionId && !target.alternativeReactionIds.includes(st.reactionId))
+          target.alternativeReactionIds.push(st.reactionId);
+      });
+      continue;
+    }
+    if (result.paths.length >= opts.k) continue;
+    bySequence.set(seq, p);
     result.paths.push(p);
-    if (result.paths.length >= opts.k) break;
   }
   return result;
 }
 
-function toRoutePath(index: MetaboIndex, raw: RawPath, excludeCurrency: boolean): RoutePath {
+const FLAG_REASON: Record<StepFlag, string> = {
+  lumped: "используются суммарные события Reactome (промежуточные стадии не показаны)",
+  "co-substrate": "есть шаги, требующие дополнительных субстратов",
+  "carbon-mismatch": "есть шаги обменных реакций, где переход вещества по числу атомов C сомнителен",
+  transport: "есть транспорт между компартментами",
+  "no-catalyst": "для части реакций катализатор в источнике не указан",
+  unbalanced: "для части реакций баланс элементов по формулам не сходится",
+  "class-entity": "маршрут проходит через группы веществ, а не конкретные соединения",
+  "compartment-jump": "компартмент меняется без транспортной реакции",
+};
+
+/** Flags that make a route "incomplete" (information-wise), as opposed to merely noteworthy. */
+const INCOMPLETE_FLAGS: ReadonlySet<StepFlag> = new Set<StepFlag>(["lumped", "carbon-mismatch", "unbalanced", "class-entity", "compartment-jump"]);
+
+function toRoutePath(index: MetaboIndex, raw: RawPath, excludeCurrency: boolean, mode: RouteMode): RoutePath {
   const realArcs = raw.arcs.filter((a) => a.reactionId !== "");
   const steps: RouteStep[] = [];
+  const consumed = new Map<string, number>();
+  const produced = new Map<string, number>();
+  let branching = false;
   let prevTo: string | undefined;
   for (const a of realArcs) {
     const r = index.reactions.get(a.reactionId)!;
@@ -350,17 +448,60 @@ function toRoutePath(index: MetaboIndex, raw: RawPath, excludeCurrency: boolean)
       const m = index.metabolites.get(p.metaboliteId);
       return !!m && !(excludeCurrency && m.currency);
     };
+    const coProducts = prods.filter((p) => p.metaboliteId !== a.toMet && relevant(p));
+    const jump = prevTo !== undefined && prevTo !== a.fromMet;
+    const flags = new Set<StepFlag>(a.flags);
+    if (r.isTransport) flags.add("transport");
+    if (r.enzymeIds.length === 0) flags.add("no-catalyst");
+    if (elementBalance(r, index.metabolites).status === "unbalanced") flags.add("unbalanced");
+    if ([a.fromMet, a.toMet].some((id) => index.metabolites.get(id)?.kind === "set")) flags.add("class-entity");
+    if (
+      mode === "relaxed" &&
+      jump &&
+      index.metabolites.get(prevTo!)?.compartmentId !== index.metabolites.get(a.fromMet)?.compartmentId
+    )
+      flags.add("compartment-jump");
+    if (coProducts.length > 0) branching = true;
+    for (const p of subs)
+      if (index.metabolites.get(p.metaboliteId)?.currency) consumed.set(p.metaboliteId, (consumed.get(p.metaboliteId) ?? 0) + p.stoichiometry);
+    for (const p of prods)
+      if (index.metabolites.get(p.metaboliteId)?.currency) produced.set(p.metaboliteId, (produced.get(p.metaboliteId) ?? 0) + p.stoichiometry);
     steps.push({
       reactionId: a.reactionId,
       direction: a.direction,
       fromId: a.fromMet,
       toId: a.toMet,
       coSubstrates: subs.filter((p) => p.metaboliteId !== a.fromMet && relevant(p)),
-      coProducts: prods.filter((p) => p.metaboliteId !== a.toMet && relevant(p)),
-      compartmentJump: prevTo !== undefined && prevTo !== a.fromMet,
+      coProducts,
+      compartmentJump: jump,
+      flags: [...flags],
+      cost: a.weight,
+      alternativeReactionIds: [],
     });
     prevTo = a.toMet;
   }
   const metaboliteIds = steps.length ? [steps[0]!.fromId, ...steps.map((s) => s.toId)] : [];
-  return { steps, metaboliteIds };
+  const allFlags = new Set(steps.flatMap((s) => s.flags));
+  const reasons = [...allFlags].map((f) => FLAG_REASON[f]);
+  if (mode === "relaxed")
+    reasons.unshift("топологический режим: направление реакций и компартменты не учитываются — это не биохимический путь");
+  const toAmounts = (m: Map<string, number>): CarrierAmount[] =>
+    [...m.entries()]
+      .map(([id, amount]) => {
+        const met = index.metabolites.get(id);
+        return { metaboliteId: id, label: met?.abbreviation ?? met?.name ?? id, amount };
+      })
+      .sort((x, y) => x.label.localeCompare(y.label));
+  return {
+    steps,
+    metaboliteIds,
+    cost: steps.reduce((sum, st) => sum + st.cost, 0),
+    assessment: {
+      kind: mode === "strict" ? "strict" : "topological",
+      incomplete: [...allFlags].some((f) => INCOMPLETE_FLAGS.has(f)),
+      reasons,
+      compartmentTransitions: steps.filter((st) => st.flags.includes("transport") || st.flags.includes("compartment-jump")).length,
+    },
+    carriers: { consumed: toAmounts(consumed), produced: toAmounts(produced), branching },
+  };
 }
