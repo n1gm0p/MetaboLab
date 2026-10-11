@@ -104,7 +104,7 @@ export function SearchBox({ onPick, placeholder, types, autoFocus, globalShortcu
     <div className="relative w-full">
       <div
         className={cx(
-          "flex items-center gap-2 rounded-xl border border-line bg-panel-solid/70 px-3 transition-shadow focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-soft)]",
+          "flex items-center gap-2 rounded-xl border border-line-strong bg-panel-solid px-3 transition-shadow focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-soft)]",
           compact ? "h-9" : "h-10",
         )}
       >
@@ -147,7 +147,7 @@ export function SearchBox({ onPick, placeholder, types, autoFocus, globalShortcu
           onMouseDown={(e) => e.preventDefault()}
         >
           {showFilters && !types && (
-            <div className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1.5">
+            <div className="no-scrollbar flex gap-1 overflow-x-auto border-b border-line px-2 py-1.5">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}

@@ -126,6 +126,8 @@ function scoreTerm(q: string, qc: string, t: string): number {
   // word-start match ("6-phosphate" inside "glucose 6-phosphate")
   const wordIdx = t.search(new RegExp(`(^|[\\s\\-,/])${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   if (wordIdx >= 0) return 60 - Math.min(20, wordIdx) * 0.3;
+  // a single character is too unspecific for matches inside a word
+  if (q.length < 2) return 0;
   if (t.includes(q)) return 40;
   if (qc.length >= 3 && compact(t).includes(qc)) return 30;
   return 0;
