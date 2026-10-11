@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition, type EventObject, type LayoutOptions } from "cytoscape";
 import dagre from "cytoscape-dagre";
 import fcose from "cytoscape-fcose";
@@ -114,7 +114,9 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const handlers = useRef(props);
-  handlers.current = props;
+  useLayoutEffect(() => {
+    handlers.current = props;
+  });
   const lastTapped = useRef<string | null>(null);
   const appliedLayoutNonce = useRef(-1);
   const [themeTick, setThemeTick] = useState(0);

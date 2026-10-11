@@ -57,7 +57,6 @@ export function SearchBox({ onPick, placeholder, types, autoFocus, globalShortcu
     return search(searchIndex, index, deferred, { limit: 40, types: t });
   }, [searchIndex, index, deferred, types, filter]);
 
-  useEffect(() => setActive(0), [deferred, filter]);
 
   useEffect(() => {
     if (!globalShortcut) return;
@@ -115,6 +114,7 @@ export function SearchBox({ onPick, placeholder, types, autoFocus, globalShortcu
           autoFocus={autoFocus}
           onChange={(e) => {
             setQ(e.target.value);
+            setActive(0);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -152,7 +152,10 @@ export function SearchBox({ onPick, placeholder, types, autoFocus, globalShortcu
                 <button
                   key={f.key}
                   type="button"
-                  onClick={() => setFilter(f.key)}
+                  onClick={() => {
+                    setFilter(f.key);
+                    setActive(0);
+                  }}
                   className={cx(
                     "min-h-8 shrink-0 rounded-lg px-2.5 text-[12px] font-medium",
                     filter === f.key ? "bg-accent-soft text-accent" : "text-muted hover:bg-hover",

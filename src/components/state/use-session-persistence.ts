@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { MetaboIndex } from "@/lib/data/metabo-index";
 import type { EntityRef, EntityType } from "@/lib/model/types";
 import { useApp, type Action, type AppState, type PersistedState } from "./app-state";
@@ -123,7 +123,9 @@ export function SessionPersistence() {
   const { index, state, dispatch } = useApp();
   const nav = useNavigator();
   const openRef = useRef(nav.open);
-  openRef.current = nav.open;
+  useLayoutEffect(() => {
+    openRef.current = nav.open;
+  });
   const openFromHash = useCallback((ref: EntityRef) => openRef.current(ref), []);
   useSessionPersistence(index, state, dispatch, openFromHash);
   return null;
