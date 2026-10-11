@@ -91,7 +91,14 @@ export type Action =
   | { type: "setLeftTab"; tab: LeftTab }
   | { type: "setLeftOpen"; value: boolean }
   | { type: "setRightOpen"; value: boolean }
-  | { type: "clearMap" };
+  | { type: "clearMap" }
+  | { type: "restore"; patch: Partial<PersistedState> };
+
+/** The part of the state that survives reloads (see use-session-persistence). */
+export type PersistedState = Pick<
+  AppState,
+  "visibleReactionIds" | "mapContext" | "focus" | "cofactorMode" | "preferRu" | "layout" | "hiddenCompartmentIds"
+>;
 
 const sameRef = (a: EntityRef | null, b: EntityRef | null) => !!a && !!b && a.type === b.type && a.id === b.id;
 
@@ -181,6 +188,13 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, leftOpen: action.value };
     case "setRightOpen":
       return { ...state, rightOpen: action.value };
+    case "restore":
+      return {
+        ...state,
+        ...action.patch,
+        rightOpen: !!action.patch.focus,
+        layoutNonce: state.layoutNonce + 1,
+      };
     case "clearMap":
       return {
         ...state,

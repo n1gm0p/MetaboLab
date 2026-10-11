@@ -7,9 +7,12 @@ import { MetaboliteCard } from "./MetaboliteCard";
 import { ReactionCard } from "./ReactionCard";
 import { EnzymeCard } from "./EnzymeCard";
 import { PathwayCard } from "./PathwayCard";
+import { NoteEditor } from "@/components/library/NoteEditor";
+import { useNavigator } from "@/components/state/use-navigator";
 
 export function DetailPanel() {
   const { state, dispatch } = useApp();
+  const nav = useNavigator();
   const f = state.focus;
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -27,6 +30,7 @@ export function DetailPanel() {
         {f?.type === "reaction" && <ReactionCard key={f.id} id={f.id} />}
         {f?.type === "enzyme" && <EnzymeCard key={f.id} id={f.id} />}
         {f?.type === "pathway" && <PathwayCard key={f.id} id={f.id} />}
+        {f && <NoteEditor key={`${f.type}:${f.id}`} refTo={f} title={nav.nameOf(f)} />}
       </div>
     </div>
   );

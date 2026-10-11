@@ -12,6 +12,8 @@ import { LeftPanel } from "@/components/layout/LeftPanel";
 import { DetailPanel } from "@/components/details/DetailPanel";
 import { MapView } from "@/components/map/MapView";
 import { cx } from "@/components/ui/primitives";
+import { UserDataProvider } from "@/components/library/user-data";
+import { SessionPersistence } from "@/components/state/use-session-persistence";
 
 export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?: string }) {
   const [showWarning, setShowWarning] = useState(!!warning);
@@ -34,6 +36,8 @@ export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?:
 
   return (
     <AppContext.Provider value={ctx}>
+      <UserDataProvider>
+      <SessionPersistence />
       <Tooltip.Provider>
         <div className="flex h-dvh flex-col">
           <TopBar />
@@ -71,6 +75,7 @@ export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?:
           </main>
         </div>
       </Tooltip.Provider>
+      </UserDataProvider>
     </AppContext.Provider>
   );
 }
