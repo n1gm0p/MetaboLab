@@ -107,7 +107,7 @@ function SettingsPopover() {
               <span className="font-medium">Самопроверка</span>
               <span className="block text-[12px] text-muted">скрыть названия веществ и ферментов</span>
             </span>
-            <input type="checkbox" className="h-5 w-5 accent-[var(--accent)]" checked={state.quizMode} onChange={(e) => dispatch({ type: "setQuiz", value: e.target.checked })} />
+            <input type="checkbox" aria-label="Самопроверка" className="h-5 w-5 accent-[var(--accent)]" checked={state.quizMode} onChange={(e) => dispatch({ type: "setQuiz", value: e.target.checked })} />
           </label>
         </Popover.Content>
       </Popover.Portal>

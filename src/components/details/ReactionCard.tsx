@@ -46,8 +46,12 @@ export function ReactionCard({ id }: { id: string }) {
               <Chip tone="accent" title="Источник указывает обратную реакцию">
                 <ArrowUpDown className="h-3 w-3" /> обратима
               </Chip>
+            ) : r.reverseReactionId ? (
+              <Chip tone="accent" title="Обратное превращение описано в источнике отдельной реакцией (ссылка ниже)">
+                <ArrowUpDown className="h-3 w-3" /> обратное превращение — отдельная реакция
+              </Chip>
             ) : (
-              <Chip title="Направление, указанное источником. Обратное превращение, если есть, — отдельная реакция.">
+              <Chip title="Направление, указанное источником. Обратная реакция в базе не найдена.">
                 <ArrowDown className="h-3 w-3" /> направленная
               </Chip>
             )}
@@ -62,13 +66,13 @@ export function ReactionCard({ id }: { id: string }) {
 
       <Section title="Уравнение">
         <div className="rounded-xl border border-line bg-panel-solid/50 p-3">
-          <EquationSide parts={r.inputs} label="Субстраты" />
+          <EquationSide parts={r.inputs} label="Субстраты" showCompartments={r.isTransport || r.compartmentIds.length > 1} />
           <div className="my-2 flex items-center gap-2 text-[12px] text-muted">
             <div className="h-px flex-1 bg-line" />
             <span className="text-[18px] leading-none text-ink-2">{r.reversible ? "⇄" : "→"}</span>
             <div className="h-px flex-1 bg-line" />
           </div>
-          <EquationSide parts={r.outputs} label="Продукты" />
+          <EquationSide parts={r.outputs} label="Продукты" showCompartments={r.isTransport || r.compartmentIds.length > 1} />
         </div>
         {(cof(r.inputs).length > 0 || cof(r.outputs).length > 0) && (
           <p className="mt-2 text-[12px] text-muted">
@@ -77,7 +81,7 @@ export function ReactionCard({ id }: { id: string }) {
         )}
         {r.reverseReactionId && index.reactions.has(r.reverseReactionId) && (
           <p className="mt-2 text-[13px]">
-            Обратная реакция: <EntityLink refTo={{ type: "reaction", id: r.reverseReactionId }} />
+            Обратное превращение: <EntityLink refTo={{ type: "reaction", id: r.reverseReactionId }} hideInQuiz />
           </p>
         )}
       </Section>
@@ -104,7 +108,7 @@ export function ReactionCard({ id }: { id: string }) {
                     <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[12px]">
                       <span className="text-muted">Кофакторы в составе:</span>
                       {e.cofactorIds.map((c) => (
-                        <Chip key={c}>{index.metabolites.get(c)?.name ?? c}</Chip>
+                        <Chip key={c}>{index.metabolites.get(c)?.nameRu ?? index.metabolites.get(c)?.name ?? c}</Chip>
                       ))}
                     </div>
                   )}
@@ -194,7 +198,7 @@ export function ReactionCard({ id }: { id: string }) {
   );
 }
 
-function EquationSide({ parts, label }: { parts: Participant[]; label: string }) {
+function EquationSide({ parts, label, showCompartments }: { parts: Participant[]; label: string; showCompartments?: boolean }) {
   const { index, state } = useApp();
   return (
     <div>
@@ -210,7 +214,10 @@ function EquationSide({ parts, label }: { parts: Participant[]; label: string })
                   {m ? (state.preferRu && m.nameRu) || m.name : p.metaboliteId}
                 </EntityLink>
               </span>
-              {m?.formula && !state.quizMode && <span className="tabular ml-auto shrink-0 text-[11px] text-faint">{prettyFormula(m.formula)}</span>}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {showCompartments && m && <CompartmentChip id={m.compartmentId} />}
+                {m?.formula && !state.quizMode && <span className="tabular text-[11px] text-faint">{prettyFormula(m.formula)}</span>}
+              </span>
             </li>
           );
         })}

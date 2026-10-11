@@ -14,17 +14,18 @@ import { Chip, ExtLink, Reveal, Section, cx } from "@/components/ui/primitives";
 export function useDetails(id: string | undefined): { details: RecordDetails | null; loading: boolean; error: boolean } {
   const { index } = useApp();
   const shards = index.dataset.meta.detailShards;
+  const version = index.dataset.meta.generatedAt;
   const [state, setState] = useState<{ id?: string; details: RecordDetails | null; error: boolean }>({ details: null, error: false });
   useEffect(() => {
     if (!id || shards <= 0) return;
     let alive = true;
-    loadDetails(id, shards)
+    loadDetails(id, shards, version)
       .then((d) => alive && setState({ id, details: d, error: false }))
       .catch(() => alive && setState({ id, details: null, error: true }));
     return () => {
       alive = false;
     };
-  }, [id, shards]);
+  }, [id, shards, version]);
   const loading = !!id && shards > 0 && state.id !== id;
   return { details: state.id === id ? state.details : null, loading, error: state.id === id && state.error };
 }
@@ -165,6 +166,7 @@ export function SourcesSection({ sources, details }: { sources: SourceRef[]; det
 }
 
 export function SummarySection({ details, loading, error, title = "Описание" }: { details: RecordDetails | null; loading: boolean; error: boolean; title?: string }) {
+  const { state } = useApp();
   if (loading)
     return (
       <Section title={title}>
@@ -183,6 +185,7 @@ export function SummarySection({ details, loading, error, title = "Описан�
   if (!details?.summary && !details?.definition) return null;
   return (
     <Section title={title}>
+      <Reveal hidden={state.quizMode} placeholder="Показать описание (может содержать ответ)">
       {details.definition && (
         <p className="text-[13px] leading-relaxed text-ink-2">
           {stripTags(details.definition)} <span className="text-[11px] text-muted">— ChEBI</span>
@@ -199,6 +202,7 @@ export function SummarySection({ details, loading, error, title = "Описан�
           )}
         </p>
       )}
+      </Reveal>
     </Section>
   );
 }

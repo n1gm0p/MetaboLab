@@ -12,7 +12,8 @@ type LoadState =
 
 async function loadDataset(): Promise<{ dataset: Dataset; warning?: string }> {
   try {
-    const res = await fetch("/data/dataset.json");
+    // revalidate with the server each time (ETag), so a re-imported dataset is picked up at once
+    const res = await fetch("/data/dataset.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json: unknown = await res.json();
     const parsed = datasetSchema.safeParse(json);

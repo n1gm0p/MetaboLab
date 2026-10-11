@@ -12,7 +12,7 @@ export function AboutDataDialog() {
   const chemicals = new Set(smallMolecules.map((m) => m.chebiId).filter(Boolean));
   const withRu = metabolites.filter((m) => m.nameRu).length;
   const transport = reactions.filter((r) => r.isTransport).length;
-  const reversible = reactions.filter((r) => r.reversible).length;
+  const withReverse = reactions.filter((r) => r.reversible || r.reverseReactionId).length;
 
   return (
     <Dialog.Root>
@@ -39,7 +39,7 @@ export function AboutDataDialog() {
               ["Путей и подпутей", pathways.length],
               ["Компартментов", compartments.length],
               ["Транспортных реакций", transport],
-              ["Обратимых по данным источника", reversible],
+              ["С обратным превращением в базе", withReverse],
               ["С русским названием", withRu],
             ].map(([label, n]) => (
               <div key={label} className="rounded-xl bg-hover p-3">
@@ -72,7 +72,7 @@ export function AboutDataDialog() {
           <ul className="mt-1 list-disc space-y-1 pl-5 text-ink-2">
             <li>Каждое вещество привязано к компартменту: глюкоза в цитозоле и во внеклеточном пространстве — разные узлы, связанные только транспортом.</li>
             <li>Реакция — отдельный узел; вещества соединены только через реакции, в которых участвуют.</li>
-            <li>Направление реакции соответствует источнику. Reactome моделирует обратные превращения отдельными реакциями; «обратимой» реакция помечается только при явной ссылке на обратную реакцию.</li>
+            <li>Направление реакции соответствует источнику. Reactome моделирует обратные превращения отдельными реакциями; такие пары связываются (по ссылке Reactome или по совпадению основных участников) и показываются в карточке.</li>
             <li>Описания реакций — тексты Reactome без изменений; определения веществ — ChEBI. Отсутствующие сведения не дополняются.</li>
             <li>Русские названия — курируемый словарь MetaboMap; если перевода нет, показывается международное название.</li>
           </ul>

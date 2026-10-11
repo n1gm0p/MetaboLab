@@ -360,9 +360,13 @@ async function main() {
     const outMap = byChebi(outputs);
     const isTransport = [...inMap].some(([chebi, comp]) => outMap.has(chebi) && outMap.get(chebi) !== comp);
 
-    const rheaIds = asArray(r.crossReference)
-      .filter((x) => x?.databaseName === "RHEA")
-      .map((x) => String(x.identifier));
+    const rheaIds = [
+      ...new Set(
+        asArray(r.crossReference)
+          .filter((x) => x?.databaseName === "RHEA")
+          .map((x) => String(x.identifier)),
+      ),
+    ];
     const category =
       r.schemaClass === "BlackBoxEvent"
         ? "black-box"
@@ -401,6 +405,35 @@ async function main() {
     if (text || lit.length)
       details[r.stId] = { id: r.stId, summary: text, summarySource: text ? reactomeRef(r.stId, "Reactome") : undefined, literature: lit };
   }
+
+  // 6b. Reverse pairs: Reactome encodes each direction as its own event. Two reactions whose main
+  //     (non-currency) substrates and products are swapped, in the same compartments, are linked.
+  const mainKey = (parts) =>
+    parts
+      .map((p) => metabolitesByStId.get(p.metaboliteId))
+      .filter((m) => m && !m.currency)
+      .map((m) => m.id)
+      .sort()
+      .join("+");
+  const bySignature = new Map();
+  for (const r of reactions) {
+    const sig = `${mainKey(r.inputs)}>${mainKey(r.outputs)}`;
+    if (!bySignature.has(sig)) bySignature.set(sig, []);
+    bySignature.get(sig).push(r);
+  }
+  let reversePairs = 0;
+  for (const r of reactions) {
+    if (r.reverseReactionId) continue;
+    const ins = mainKey(r.inputs);
+    const outs = mainKey(r.outputs);
+    if (!ins || !outs) continue;
+    const match = (bySignature.get(`${outs}>${ins}`) ?? []).find((x) => x.id !== r.id);
+    if (match) {
+      r.reverseReactionId = match.id;
+      reversePairs++;
+    }
+  }
+  console.log(`Reverse reaction pairs linked: ${reversePairs}`);
 
   // 7. Pathways
   const reactionStIds = new Set(reactions.map((r) => r.id));

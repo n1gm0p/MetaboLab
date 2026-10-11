@@ -13,10 +13,10 @@ export function shardOf(id: string, shards: number): number {
 
 const shardCache = new Map<number, Promise<Record<string, RecordDetails>>>();
 
-async function loadShard(n: number, baseUrl: string): Promise<Record<string, RecordDetails>> {
+async function loadShard(n: number, baseUrl: string, version: string): Promise<Record<string, RecordDetails>> {
   let p = shardCache.get(n);
   if (!p) {
-    p = fetch(`${baseUrl}/details/${n}.json`)
+    p = fetch(`${baseUrl}/details/${n}.json?v=${encodeURIComponent(version)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -31,8 +31,13 @@ async function loadShard(n: number, baseUrl: string): Promise<Record<string, Rec
   return p;
 }
 
-export async function loadDetails(id: string, shards: number, baseUrl = "/data"): Promise<RecordDetails | null> {
+export async function loadDetails(
+  id: string,
+  shards: number,
+  version: string,
+  baseUrl = "/data",
+): Promise<RecordDetails | null> {
   if (shards <= 0) return null;
-  const shard = await loadShard(shardOf(id, shards), baseUrl);
+  const shard = await loadShard(shardOf(id, shards), baseUrl, version);
   return shard[id] ?? null;
 }
