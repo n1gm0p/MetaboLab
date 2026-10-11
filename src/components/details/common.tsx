@@ -61,7 +61,7 @@ export function EntityLink({ refTo, children, className, hideInQuiz }: { refTo: 
   );
 }
 
-export function ParticipantList({ parts, highlightId }: { parts: Participant[]; highlightId?: string }) {
+export function ParticipantList({ parts, highlightId, showCompartment }: { parts: Participant[]; highlightId?: string; showCompartment?: boolean }) {
   const { index, state } = useApp();
   return (
     <span className="inline">
@@ -75,6 +75,7 @@ export function ParticipantList({ parts, highlightId }: { parts: Participant[]; 
             <span className={cx(m?.currency && "text-muted", p.metaboliteId === highlightId && "font-semibold text-ink")}>
               {state.quizMode && !m?.currency && p.metaboliteId !== highlightId ? "?" : name}
             </span>
+            {showCompartment && m && <span className="text-[11px] text-muted"> [{compartmentName(index, m.compartmentId)}]</span>}
           </span>
         );
       })}
@@ -100,13 +101,13 @@ export function ReactionRow({ reactionId, highlightId, tone }: { reactionId: str
         )}
       >
         <div className="text-[13px] leading-snug text-ink-2">
-          <ParticipantList parts={r.inputs} highlightId={highlightId} />{" "}
+          <ParticipantList parts={r.inputs} highlightId={highlightId} showCompartment={r.isTransport} />{" "}
           {r.reversible ? (
             <ArrowLeftRight className="mx-0.5 inline h-3.5 w-3.5 text-muted" aria-label="обратимо" />
           ) : (
             <ArrowRight className={cx("mx-0.5 inline h-3.5 w-3.5", tone === "in" ? "text-in" : tone === "out" ? "text-out" : "text-muted")} aria-label="необратимо" />
           )}{" "}
-          <ParticipantList parts={r.outputs} highlightId={highlightId} />
+          <ParticipantList parts={r.outputs} highlightId={highlightId} showCompartment={r.isTransport} />
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
           {enzymes.length > 0 && !state.quizMode && (

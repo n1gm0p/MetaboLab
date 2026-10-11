@@ -22,7 +22,19 @@ export interface RouteEndpoint {
   anyCompartment: boolean;
 }
 
+/** What is drawn on the map; stored to go back to a previous view. */
+export interface MapSnapshot {
+  visibleReactionIds: string[];
+  hiddenMetaboliteIds: string[];
+  mapContext: MapContext;
+  layout: LayoutMode;
+}
+
 export interface AppState {
+  /** previous map views (most recent last) */
+  mapHistory: MapSnapshot[];
+  /** show only reactions of this pathway among those on the map */
+  mapPathwayFilter: string | null;
   /** reactions currently drawn on the map */
   visibleReactionIds: string[];
   hiddenMetaboliteIds: string[];
@@ -42,12 +54,16 @@ export interface AppState {
   activeRoutePath: number;
   routeFrom: RouteEndpoint | null;
   routeTo: RouteEndpoint | null;
+  /** review of saved cards (self-check) */
+  review: { items: EntityRef[]; i: number } | null;
   leftTab: LeftTab;
   leftOpen: boolean;
   rightOpen: boolean;
 }
 
 export const initialState: AppState = {
+  mapHistory: [],
+  mapPathwayFilter: null,
   visibleReactionIds: [],
   hiddenMetaboliteIds: [],
   hiddenCompartmentIds: [],
@@ -64,6 +80,7 @@ export const initialState: AppState = {
   activeRoutePath: 0,
   routeFrom: null,
   routeTo: null,
+  review: null,
   leftTab: "pathways",
   leftOpen: true,
   rightOpen: false,
@@ -88,10 +105,13 @@ export type Action =
   | { type: "selectRoutePath"; index: number }
   | { type: "setRouteEndpoint"; end: "from" | "to"; value: RouteEndpoint | null; openPanel?: boolean }
   | { type: "swapRouteEndpoints" }
+  | { type: "setReview"; review: { items: EntityRef[]; i: number } | null }
   | { type: "setLeftTab"; tab: LeftTab }
   | { type: "setLeftOpen"; value: boolean }
   | { type: "setRightOpen"; value: boolean }
   | { type: "clearMap" }
+  | { type: "undoMap" }
+  | { type: "setMapPathwayFilter"; pathwayId: string | null }
   | { type: "restore"; patch: Partial<PersistedState> };
 
 /** The part of the state that survives reloads (see use-session-persistence). */
@@ -102,11 +122,26 @@ export type PersistedState = Pick<
 
 const sameRef = (a: EntityRef | null, b: EntityRef | null) => !!a && !!b && a.type === b.type && a.id === b.id;
 
+const snapshot = (s: AppState): MapSnapshot => ({
+  visibleReactionIds: s.visibleReactionIds,
+  hiddenMetaboliteIds: s.hiddenMetaboliteIds,
+  mapContext: s.mapContext,
+  layout: s.layout,
+});
+
+/** Remember the current view before replacing it (empty views and repeats are not stored). */
+function pushHistory(s: AppState): MapSnapshot[] {
+  if (s.visibleReactionIds.length === 0) return s.mapHistory;
+  return [...s.mapHistory, snapshot(s)].slice(-20);
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "showReactions":
       return {
         ...state,
+        mapHistory: pushHistory(state),
+        mapPathwayFilter: null,
         visibleReactionIds: [...new Set(action.reactionIds)],
         hiddenMetaboliteIds: [],
         mapContext: action.context,
@@ -123,6 +158,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (set.size === before) return state;
       return {
         ...state,
+        mapHistory: pushHistory(state),
         visibleReactionIds: [...set],
         mapContext:
           state.mapContext.kind === "empty"
@@ -180,6 +216,8 @@ export function reducer(state: AppState, action: Action): AppState {
         [action.end === "from" ? "routeFrom" : "routeTo"]: action.value,
         ...(action.openPanel ? { leftTab: "route" as const, leftOpen: true } : {}),
       };
+    case "setReview":
+      return { ...state, review: action.review, quizMode: action.review ? true : false };
     case "swapRouteEndpoints":
       return { ...state, routeFrom: state.routeTo, routeTo: state.routeFrom };
     case "setLeftTab":
@@ -195,9 +233,26 @@ export function reducer(state: AppState, action: Action): AppState {
         rightOpen: !!action.patch.focus,
         layoutNonce: state.layoutNonce + 1,
       };
+    case "undoMap": {
+      const prev = state.mapHistory[state.mapHistory.length - 1];
+      if (!prev) return state;
+      return {
+        ...state,
+        ...prev,
+        mapHistory: state.mapHistory.slice(0, -1),
+        mapPathwayFilter: null,
+        activeRoute: prev.mapContext.kind === "route" ? state.activeRoute : null,
+        layoutNonce: state.layoutNonce + 1,
+        expandAnchor: undefined,
+      };
+    }
+    case "setMapPathwayFilter":
+      return { ...state, mapPathwayFilter: action.pathwayId };
     case "clearMap":
       return {
         ...state,
+        mapHistory: pushHistory(state),
+        mapPathwayFilter: null,
         visibleReactionIds: [],
         hiddenMetaboliteIds: [],
         mapContext: { kind: "empty", label: "" },

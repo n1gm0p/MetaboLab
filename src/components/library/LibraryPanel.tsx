@@ -1,12 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, NotebookPen, Star, Upload } from "lucide-react";
-import type { EntityType } from "@/lib/model/types";
+import { ChevronLeft, ChevronRight, Download, Flag, NotebookPen, Repeat, Star, Upload, X } from "lucide-react";
+import type { EntityRef, EntityType } from "@/lib/model/types";
 import { useApp } from "@/components/state/app-state";
 import { useNavigator } from "@/components/state/use-navigator";
 import { TYPE_LABEL } from "@/components/search/SearchBox";
-import { TextButton } from "@/components/ui/primitives";
+import { IconButton, TextButton } from "@/components/ui/primitives";
 import { useUserData } from "./user-data";
 
 const TYPE_DOT: Record<EntityType, string> = {
@@ -17,7 +17,8 @@ const TYPE_DOT: Record<EntityType, string> = {
 };
 
 export function LibraryPanel() {
-  const { index } = useApp();
+  const { index, state, dispatch } = useApp();
+  const review = state.review;
   const nav = useNavigator();
   const ud = useUserData();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -39,7 +40,7 @@ export function LibraryPanel() {
   const onImport = async (file: File) => {
     try {
       const res = ud.importData(JSON.parse(await file.text()));
-      setMessage(`Импортировано: закладок ${res.bookmarks}, заметок ${res.notes}`);
+      setMessage(`Импортировано: закладок ${res.bookmarks}, заметок ${res.notes}, отметок «сложно» ${res.difficult}`);
     } catch {
       setMessage("Файл не похож на экспорт MetaboMap");
     }
@@ -67,8 +68,62 @@ export function LibraryPanel() {
     );
   };
 
+  /** saved cards available in the current dataset: difficult first, then favourites */
+  const reviewItems = (() => {
+    const seen = new Set<string>();
+    const out: EntityRef[] = [];
+    for (const r of [...ud.difficult, ...ud.bookmarks]) {
+      const key = `${r.ref.type}:${r.ref.id}`;
+      if (seen.has(key) || !exists(r.ref.type, r.ref.id)) continue;
+      seen.add(key);
+      out.push(r.ref);
+    }
+    return out;
+  })();
+
+  const goTo = (items: EntityRef[], i: number) => {
+    const ref = items[i];
+    if (!ref) return;
+    dispatch({ type: "setReview", review: { items, i } });
+    nav.open(ref);
+  };
+
   return (
     <div className="scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4">
+      <div className="mx-1 mb-3 rounded-xl border border-line-strong p-2.5">
+        {review ? (
+          <div>
+            <div className="flex items-center gap-1">
+              <span className="tabular flex-1 text-[12px] font-medium">
+                Повторение: {review.i + 1} из {review.items.length}
+              </span>
+              <IconButton label="Предыдущая карточка" size="sm" disabled={review.i === 0} onClick={() => goTo(review.items, review.i - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Следующая карточка"
+                size="sm"
+                disabled={review.i >= review.items.length - 1}
+                onClick={() => goTo(review.items, review.i + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </IconButton>
+              <IconButton
+                label="Закончить повторение"
+                size="sm"
+                onClick={() => dispatch({ type: "setReview", review: null })}
+              >
+                <X className="h-4 w-4" />
+              </IconButton>
+            </div>
+            <p className="mt-1 text-[11px] text-muted">Самопроверка включена: раскрывайте названия и ответы в карточке.</p>
+          </div>
+        ) : (
+          <TextButton className="w-full" disabled={reviewItems.length === 0} onClick={() => goTo(reviewItems, 0)}>
+            <Repeat className="h-3.5 w-3.5" /> Повторить сохранённое ({reviewItems.length})
+          </TextButton>
+        )}
+      </div>
       {!ud.persistent && ud.ready && (
         <p className="mx-1 mb-2 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[12px] text-warn">
           Хранилище браузера недоступно — заметки сохранятся только до перезагрузки.
@@ -83,6 +138,19 @@ export function LibraryPanel() {
         <ul>
           {ud.bookmarks.map((b) => (
             <Item key={b.id} type={b.ref.type} id={b.ref.id} title={b.title} />
+          ))}
+        </ul>
+      )}
+
+      <h3 className="mt-3 flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+        <Flag className="h-3.5 w-3.5" /> Сложные <span className="tabular font-normal text-faint">{ud.difficult.length}</span>
+      </h3>
+      {ud.difficult.length === 0 ? (
+        <p className="px-2 pb-2 text-[12px] text-muted">Отмечайте сложные реакции флажком при прохождении пути.</p>
+      ) : (
+        <ul>
+          {ud.difficult.map((d) => (
+            <Item key={d.id} type={d.ref.type} id={d.ref.id} title={d.title} />
           ))}
         </ul>
       )}

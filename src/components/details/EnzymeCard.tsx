@@ -1,6 +1,7 @@
 "use client";
 
-import { Map as MapIcon } from "lucide-react";
+import { useMemo } from "react";
+import { Map as MapIcon, Minus, Plus } from "lucide-react";
 import { ecUrl } from "@/lib/format";
 import { useApp } from "@/components/state/app-state";
 import { MAX_REACTIONS_ON_MAP } from "@/components/state/use-navigator";
@@ -12,6 +13,21 @@ export function EnzymeCard({ id }: { id: string }) {
   const { index, state, dispatch } = useApp();
   const e = index.enzymes.get(id);
   const { details, loading, error } = useDetails(e ? id : undefined);
+  /** main substrates/products and regulation over all reactions of this catalyst (from the records) */
+  const summary = useMemo(() => {
+    const subs = new Map<string, number>();
+    const prods = new Map<string, number>();
+    const regulation: { reactionId: string; type: string; name: string }[] = [];
+    for (const rid of e?.reactionIds ?? []) {
+      const r = index.reactions.get(rid);
+      if (!r) continue;
+      for (const p of r.inputs) if (!index.metabolites.get(p.metaboliteId)?.currency) subs.set(p.metaboliteId, (subs.get(p.metaboliteId) ?? 0) + 1);
+      for (const p of r.outputs) if (!index.metabolites.get(p.metaboliteId)?.currency) prods.set(p.metaboliteId, (prods.get(p.metaboliteId) ?? 0) + 1);
+      for (const g of r.regulation) regulation.push({ reactionId: rid, type: g.type, name: g.regulatorName });
+    }
+    const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    return { substrates: top(subs), products: top(prods), regulation };
+  }, [e, index]);
   if (!e) return <p className="p-5 text-muted">Фермент не найден.</p>;
 
   return (
@@ -98,6 +114,40 @@ export function EnzymeCard({ id }: { id: string }) {
               <Chip key={s}>{s}</Chip>
             ))}
           </div>
+        )}
+      </Section>
+
+      <Section title="Субстраты и продукты (по реакциям)">
+        <div className="space-y-2 text-[13px]">
+          {(["substrates", "products"] as const).map((k) => (
+            <div key={k}>
+              <div className="mb-1 text-[11px] text-muted">{k === "substrates" ? "Субстраты" : "Продукты"}</div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {summary[k].length === 0 && <span className="text-muted">—</span>}
+                {summary[k].slice(0, 20).map((m) => (
+                  <EntityLink key={m} refTo={{ type: "metabolite", id: m }} hideInQuiz />
+                ))}
+                {summary[k].length > 20 && <span className="text-muted">и ещё {summary[k].length - 20}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Регуляция реакций (по данным источника)" count={summary.regulation.length}>
+        {summary.regulation.length === 0 ? (
+          <p className="text-[13px] text-muted">В источнике регуляция реакций этого катализатора не описана.</p>
+        ) : (
+          <ul className="space-y-1 text-[13px]">
+            {summary.regulation.slice(0, 15).map((g, i) => (
+              <li key={`${g.reactionId}-${i}`} className="flex items-start gap-2">
+                <span className={g.type === "negative" ? "mt-0.5 text-out" : "mt-0.5 text-in"}>
+                  {g.type === "negative" ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                </span>
+                <span className="text-ink-2">{state.quizMode ? "?" : g.name}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </Section>
 

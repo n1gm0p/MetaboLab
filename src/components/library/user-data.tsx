@@ -8,6 +8,7 @@ import {
   recordKey,
   userDataExportSchema,
   type Bookmark,
+  type DifficultMark,
   type UserDataExport,
   type UserDataRepository,
   type UserNote,
@@ -22,8 +23,11 @@ interface UserDataValue {
   toggleBookmark: (ref: EntityRef, title: string) => void;
   noteFor: (ref: EntityRef) => UserNote | undefined;
   saveNote: (ref: EntityRef, title: string, text: string) => void;
+  difficult: DifficultMark[];
+  isDifficult: (ref: EntityRef) => boolean;
+  toggleDifficult: (ref: EntityRef, title: string) => void;
   exportData: () => UserDataExport;
-  importData: (json: unknown) => { bookmarks: number; notes: number };
+  importData: (json: unknown) => { bookmarks: number; notes: number; difficult: number };
 }
 
 const UserDataContext = createContext<UserDataValue | null>(null);
@@ -40,14 +44,16 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [allBookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [allNotes, setNotes] = useState<UserNote[]>([]);
+  const [allDifficult, setDifficult] = useState<DifficultMark[]>([]);
 
   useEffect(() => {
     const { repo, persistent } = createRepository();
     repoRef.current = repo;
-    Promise.all([repo.listBookmarks(), repo.listNotes()])
-      .then(([b, n]) => {
+    Promise.all([repo.listBookmarks(), repo.listNotes(), repo.listDifficult()])
+      .then(([b, n, d]) => {
         setBookmarks(b);
         setNotes(n);
+        setDifficult(d);
         setPersistent(persistent);
       })
       .catch(() => {
@@ -71,6 +77,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     () => allNotes.filter((n) => !n.deletedAt && n.text.trim()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [allNotes],
   );
+  const difficult = useMemo(
+    () => allDifficult.filter((d) => !d.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [allDifficult],
+  );
+  const difficultIds = useMemo(() => new Set(difficult.map((d) => d.id)), [difficult]);
   const bookmarkIds = useMemo(() => new Set(bookmarks.map((b) => b.id)), [bookmarks]);
   const notesById = useMemo(() => new Map(allNotes.filter((n) => !n.deletedAt).map((n) => [n.id, n])), [allNotes]);
 
@@ -86,6 +97,23 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
             : { id, ref, title, createdAt: cur?.createdAt ?? now, updatedAt: now };
         write((repo) => repo.putBookmark(next));
         return [...list.filter((b) => b.id !== id), next];
+      });
+    },
+    [write],
+  );
+
+  const toggleDifficult = useCallback(
+    (ref: EntityRef, title: string) => {
+      const id = recordKey(ref);
+      const now = new Date().toISOString();
+      setDifficult((list) => {
+        const cur = list.find((d) => d.id === id);
+        const next: DifficultMark =
+          cur && !cur.deletedAt
+            ? { ...cur, updatedAt: now, deletedAt: now }
+            : { id, ref, title, createdAt: cur?.createdAt ?? now, updatedAt: now };
+        write((repo) => repo.putDifficult(next));
+        return [...list.filter((d) => d.id !== id), next];
       });
     },
     [write],
@@ -112,8 +140,9 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       exportedAt: new Date().toISOString(),
       bookmarks: allBookmarks,
       notes: allNotes,
+      difficult: allDifficult,
     }),
-    [allBookmarks, allNotes],
+    [allBookmarks, allNotes, allDifficult],
   );
 
   const importData = useCallback(
@@ -121,12 +150,14 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       const data = userDataExportSchema.parse(json);
       const mergedB = mergeRecords(allBookmarks, data.bookmarks);
       const mergedN = mergeRecords(allNotes, data.notes);
+      const mergedD = mergeRecords(allDifficult, data.difficult ?? []);
       setBookmarks(mergedB);
       setNotes(mergedN);
-      write((repo) => repo.putAll({ bookmarks: mergedB, notes: mergedN }));
-      return { bookmarks: data.bookmarks.length, notes: data.notes.length };
+      setDifficult(mergedD);
+      write((repo) => repo.putAll({ bookmarks: mergedB, notes: mergedN, difficult: mergedD }));
+      return { bookmarks: data.bookmarks.length, notes: data.notes.length, difficult: data.difficult?.length ?? 0 };
     },
-    [allBookmarks, allNotes, write],
+    [allBookmarks, allNotes, allDifficult, write],
   );
 
   const value = useMemo<UserDataValue>(
@@ -139,10 +170,13 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       toggleBookmark,
       noteFor: (ref) => notesById.get(recordKey(ref)),
       saveNote,
+      difficult,
+      isDifficult: (ref) => difficultIds.has(recordKey(ref)),
+      toggleDifficult,
       exportData,
       importData,
     }),
-    [ready, persistent, bookmarks, notes, bookmarkIds, notesById, toggleBookmark, saveNote, exportData, importData],
+    [ready, persistent, bookmarks, notes, bookmarkIds, notesById, toggleBookmark, saveNote, difficult, difficultIds, toggleDifficult, exportData, importData],
   );
 
   return <UserDataContext.Provider value={value}>{children}</UserDataContext.Provider>;

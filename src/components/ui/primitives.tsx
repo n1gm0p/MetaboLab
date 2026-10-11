@@ -26,7 +26,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
           className={cx(
             "inline-flex shrink-0 items-center justify-center rounded-[10px] text-ink-2 transition-colors",
             "hover:bg-hover active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none",
-            size === "md" ? "h-9 w-9" : "h-8 w-8",
+            // 44px targets on touch screens (iPad, phones)
+            size === "md" ? "h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-11" : "h-8 w-8 pointer-coarse:h-10 pointer-coarse:w-10",
             active && "bg-accent-soft text-accent hover:bg-accent-soft",
             className,
           )}
@@ -144,7 +145,7 @@ export function TextButton({
     <button
       type="button"
       className={cx(
-        "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-colors active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none",
+        "inline-flex min-h-9 pointer-coarse:min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-colors active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none",
         tone === "primary" && "bg-accent text-white hover:opacity-90",
         tone === "accent" && "bg-accent-soft text-accent hover:opacity-90",
         tone === "neutral" && "bg-hover text-ink hover:bg-line",

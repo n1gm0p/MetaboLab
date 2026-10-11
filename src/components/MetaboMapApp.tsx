@@ -37,6 +37,18 @@ export function MetaboMapApp({ dataset, warning }: { dataset: Dataset; warning?:
     if (window.matchMedia("(max-width: 767px)").matches) dispatch({ type: "setLeftOpen", value: false });
   }, []);
 
+  // Escape closes the card (unless the user is typing or a dialog/menu handles it)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.closest("[role=dialog]"))) return;
+      dispatch({ type: "setRightOpen", value: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const ctx = useMemo(() => ({ index, searchIndex, state, dispatch }), [index, searchIndex, state]);
 
   return (

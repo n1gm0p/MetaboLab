@@ -8,6 +8,8 @@ import { useNavigator } from "@/components/state/use-navigator";
 import { Chip, ExtLink, Reveal, Section, cx } from "@/components/ui/primitives";
 import { CardHeader, CompartmentChip, EntityLink, SourcesSection, SummarySection, useDetails } from "./common";
 import { CardActions } from "./CardActions";
+import { compartmentMismatch, elementBalance } from "@/lib/audit/audit";
+import { compartmentName } from "@/lib/data/metabo-index";
 
 const CATEGORY_LABEL: Record<string, string> = {
   transition: "Химическое превращение",
@@ -32,6 +34,14 @@ export function ReactionCard({ id }: { id: string }) {
   const main = (ps: Participant[]) => ps.filter((p) => !index.metabolites.get(p.metaboliteId)?.currency);
   const cof = (ps: Participant[]) => ps.filter((p) => index.metabolites.get(p.metaboliteId)?.currency);
   const enzymes = r.enzymeIds.map((e) => index.enzymes.get(e)).filter((e) => e !== undefined);
+  const balance = elementBalance(r, index.metabolites);
+  const outside = compartmentMismatch(r, index.metabolites);
+  const showCompartments = r.isTransport || r.compartmentIds.length > 1 || outside.length > 0;
+  const carrierLine = (ps: Participant[]) =>
+    cof(ps)
+      .filter((p) => !["H+", "H2O"].includes(index.metabolites.get(p.metaboliteId)?.abbreviation ?? ""))
+      .map((p) => `${p.stoichiometry} ${index.metabolites.get(p.metaboliteId)?.abbreviation ?? index.metabolites.get(p.metaboliteId)?.name}`)
+      .join(", ");
 
   return (
     <div>
@@ -66,13 +76,13 @@ export function ReactionCard({ id }: { id: string }) {
 
       <Section title="Уравнение">
         <div className="rounded-xl border border-line bg-panel-solid/50 p-3">
-          <EquationSide parts={r.inputs} label="Субстраты" showCompartments={r.isTransport || r.compartmentIds.length > 1} />
+          <EquationSide parts={r.inputs} label="Субстраты" showCompartments={showCompartments} />
           <div className="my-2 flex items-center gap-2 text-[12px] text-muted">
             <div className="h-px flex-1 bg-line" />
             <span className="text-[18px] leading-none text-ink-2">{r.reversible ? "⇄" : "→"}</span>
             <div className="h-px flex-1 bg-line" />
           </div>
-          <EquationSide parts={r.outputs} label="Продукты" showCompartments={r.isTransport || r.compartmentIds.length > 1} />
+          <EquationSide parts={r.outputs} label="Продукты" showCompartments={showCompartments} />
         </div>
         {(cof(r.inputs).length > 0 || cof(r.outputs).length > 0) && (
           <p className="mt-2 text-[12px] text-muted">
@@ -84,6 +94,18 @@ export function ReactionCard({ id }: { id: string }) {
             Обратное превращение: <EntityLink refTo={{ type: "reaction", id: r.reverseReactionId }} hideInQuiz />
           </p>
         )}
+      </Section>
+
+      <Section title="Энергетика и переносчики">
+        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-[13px]">
+          <dt className="text-muted">Расходуется</dt>
+          <dd className="tabular text-ink-2">{carrierLine(r.inputs) || "—"}</dd>
+          <dt className="text-muted">Образуется</dt>
+          <dd className="tabular text-ink-2">{carrierLine(r.outputs) || "—"}</dd>
+          <dt className="text-muted">ΔG, Keq</dt>
+          <dd className="text-muted">нет в базе (Reactome не содержит термодинамических данных)</dd>
+        </dl>
+        <p className="mt-1.5 text-[11px] text-faint">Вычислено по стехиометрии записи; H⁺ и вода не показаны.</p>
       </Section>
 
       <Section title="Фермент" count={enzymes.length}>
@@ -192,6 +214,44 @@ export function ReactionCard({ id }: { id: string }) {
           </div>
         </Section>
       )}
+
+      <Section title="Проверка записи (вычислено)">
+        <ul className="space-y-1.5 text-[13px]">
+          <li className="flex gap-2">
+            <span className="w-32 shrink-0 text-muted">Баланс элементов</span>
+            <span className={balance.status === "unbalanced" ? "text-warn" : "text-ink-2"}>
+              {balance.status === "balanced" && "сходится (H и заряд не учитываются)"}
+              {balance.status === "unbalanced" &&
+                `не сходится: ${Object.entries(balance.difference)
+                  .map(([el, n]) => `${el} ${n > 0 ? "+" : ""}${n}`)
+                  .join(", ")} (субстраты − продукты)`}
+              {balance.status === "not-checkable" && `не проверяется — ${balance.reason}`}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="w-32 shrink-0 text-muted">Компартменты</span>
+            <span className="text-ink-2">
+              {outside.length === 0
+                ? "все участники в компартментах реакции"
+                : `участники также в: ${outside.map((c) => compartmentName(index, c)).join(", ")} — не указано в записи реакции`}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="w-32 shrink-0 text-muted">Обратная реакция</span>
+            <span className="text-ink-2">
+              {!r.reverseReactionId
+                ? "в базе не найдена"
+                : r.reverseSource === "inferred"
+                  ? "найдена импортёром: те же основные участники с обратными ролями, тот же компартмент"
+                  : "указана в Reactome"}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="w-32 shrink-0 text-muted">Катализатор</span>
+            <span className="text-ink-2">{enzymes.length ? (r.ecNumbers.length ? "указан, есть EC" : "указан, EC неизвестен") : "не указан в источнике"}</span>
+          </li>
+        </ul>
+      </Section>
 
       <SourcesSection sources={r.sources} details={details} />
     </div>

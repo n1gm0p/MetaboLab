@@ -22,8 +22,16 @@ export function MapLegend({ model }: { model: GraphModel }) {
   }, [state.visibleReactionIds, index]);
   void model;
 
+  /** pathways with reactions on the map (only those with direct reactions, most represented first) */
+  const pathways = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const rid of state.visibleReactionIds)
+      for (const p of index.reactions.get(rid)?.pathwayIds ?? []) counts.set(p, (counts.get(p) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [state.visibleReactionIds, index]);
+
   return (
-    <div className="glass absolute bottom-4 left-4 z-10 w-60 rounded-2xl text-[12px] max-md:hidden">
+    <div className="glass absolute bottom-4 left-4 z-10 w-60 rounded-2xl text-[12px] max-md:bottom-auto max-md:left-2 max-md:top-16 max-md:w-56">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -45,6 +53,23 @@ export function MapLegend({ model }: { model: GraphModel }) {
             <LegendRow swatch={<span className="h-0.5 w-8 rounded bg-out" />} label="Реакции превращения" />
             <LegendRow swatch={<span className="h-0.5 w-8 rounded bg-route" />} label="Найденный маршрут" />
           </div>
+          {pathways.length > 1 && (
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Показать реакции пути</span>
+              <select
+                value={state.mapPathwayFilter ?? ""}
+                onChange={(e) => dispatch({ type: "setMapPathwayFilter", pathwayId: e.target.value || null })}
+                className="h-9 w-full rounded-lg border border-line-strong bg-panel-solid px-2 text-[12px]"
+              >
+                <option value="">Все пути на карте</option>
+                {pathways.map(([pid, n]) => (
+                  <option key={pid} value={pid}>
+                    {index.pathways.get(pid)?.nameRu ?? index.pathways.get(pid)?.name} ({n})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {compartments.length > 0 && (
             <div>
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Компартменты на карте</div>

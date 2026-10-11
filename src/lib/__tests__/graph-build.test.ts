@@ -82,3 +82,26 @@ describe("pathway analysis", () => {
     expect(b).toEqual({ inputs: ["A"], outputs: ["C"] });
   });
 });
+
+describe("pathway reading order", () => {
+  it("orders reactions along the chain and detects cycles", async () => {
+    const { orderPathwayReactions, branchPoints } = await import("@/lib/data/pathway-analysis");
+    const ds = dataset(
+      [met("A"), met("B"), met("C"), met("D")],
+      [rxn("R3", [["C"]], [["D"]]), rxn("R1", [["A"]], [["B"]]), rxn("R2", [["B"]], [["C"]]), rxn("R2b", [["B"]], [["D"]])],
+    );
+    ds.pathways = [{ id: "P", name: "P", reactionIds: ["R3", "R1", "R2", "R2b"], subpathwayIds: [], parentIds: [], sources: [] }];
+    const idx = buildIndex(ds);
+    const o = orderPathwayReactions(idx, "P");
+    expect(o.cyclic).toBe(false);
+    expect(o.reactionIds.indexOf("R1")).toBeLessThan(o.reactionIds.indexOf("R2"));
+    expect(o.reactionIds.indexOf("R2")).toBeLessThan(o.reactionIds.indexOf("R3"));
+    expect(branchPoints(idx, "P")).toEqual([{ metaboliteId: "B", reactionIds: ["R2", "R2b"] }]);
+
+    const cyc = dataset([met("A"), met("B")], [rxn("X", [["A"]], [["B"]]), rxn("Y", [["B"]], [["A"]])]);
+    cyc.pathways = [{ id: "C", name: "C", reactionIds: ["X", "Y"], subpathwayIds: [], parentIds: [], sources: [] }];
+    const oc = orderPathwayReactions(buildIndex(cyc), "C");
+    expect(oc.cyclic).toBe(true);
+    expect(oc.reactionIds.sort()).toEqual(["X", "Y"]);
+  });
+});

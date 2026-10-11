@@ -18,6 +18,9 @@ export interface UserRecordBase {
 
 export type Bookmark = UserRecordBase;
 
+/** "Difficult" mark set while studying (reactions, metabolites...). Same shape as a bookmark. */
+export type DifficultMark = UserRecordBase;
+
 export interface UserNote extends UserRecordBase {
   text: string;
 }
@@ -28,6 +31,8 @@ export interface UserDataExport {
   exportedAt: string;
   bookmarks: Bookmark[];
   notes: UserNote[];
+  /** added later; optional so older export files stay valid */
+  difficult?: DifficultMark[];
 }
 
 export const recordKey = (ref: EntityRef) => `${ref.type}:${ref.id}`;
@@ -48,6 +53,7 @@ export const userDataExportSchema = z.object({
   exportedAt: z.string(),
   bookmarks: z.array(z.object(base)),
   notes: z.array(z.object({ ...base, text: z.string().max(200_000) })),
+  difficult: z.array(z.object(base)).optional(),
 });
 
 /** Last-write-wins merge used by import (and by a future sync). */
@@ -65,6 +71,8 @@ export interface UserDataRepository {
   listNotes(): Promise<UserNote[]>;
   putBookmark(b: Bookmark): Promise<void>;
   putNote(n: UserNote): Promise<void>;
-  /** replaces everything with the merged result */
-  putAll(data: { bookmarks: Bookmark[]; notes: UserNote[] }): Promise<void>;
+  listDifficult(): Promise<DifficultMark[]>;
+  putDifficult(d: DifficultMark): Promise<void>;
+  /** writes the merged result */
+  putAll(data: { bookmarks: Bookmark[]; notes: UserNote[]; difficult: DifficultMark[] }): Promise<void>;
 }

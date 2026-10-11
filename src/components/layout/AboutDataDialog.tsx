@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import type { AuditReport } from "@/lib/audit/audit";
 import { X } from "lucide-react";
 import { useApp } from "@/components/state/app-state";
 import { ExtLink } from "@/components/ui/primitives";
@@ -13,9 +15,18 @@ export function AboutDataDialog() {
   const withRu = metabolites.filter((m) => m.nameRu).length;
   const transport = reactions.filter((r) => r.isTransport).length;
   const withReverse = reactions.filter((r) => r.reversible || r.reverseReactionId).length;
+  const [audit, setAudit] = useState<AuditReport | null | "missing">(null);
+  const loadAudit = () => {
+    if (audit !== null || meta.isMock) return;
+    fetch("/data/audit.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? (r.json() as Promise<AuditReport>) : Promise.reject(new Error(String(r.status)))))
+      .then((a) => setAudit(a))
+      .catch(() => setAudit("missing"));
+  };
+  const statusLabel = { passed: "пройдена", "passed-with-warnings": "пройдена с предупреждениями", failed: "есть ошибки" } as const;
 
   return (
-    <Dialog.Root>
+    <Dialog.Root onOpenChange={(open) => open && loadAudit()}>
       <Dialog.Trigger className="font-medium text-accent hover:underline">О данных и покрытии</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/25 backdrop-blur-[2px]" />
@@ -27,8 +38,48 @@ export function AboutDataDialog() {
             </Dialog.Close>
           </div>
           <Dialog.Description className="mt-1 text-[13px] text-muted">
-            Сгенерировано: {new Date(meta.generatedAt).toLocaleString("ru-RU")}
+            Импорт: {new Date(meta.generatedAt).toLocaleString("ru-RU")}
+            {meta.importer && ` · релиз Reactome ${meta.importer.reactomeRelease}${meta.importer.chebi ? " · ChEBI через OLS" : ""}`}
+            {meta.isMock && " · демонстрационный набор, проверка не выполнялась"}
           </Dialog.Description>
+
+          {!meta.isMock && (
+            <div className="mt-4 rounded-xl border border-line-strong p-3 text-[13px]">
+              <div className="font-semibold">Проверка качества данных</div>
+              {audit === null && <p className="mt-1 text-muted">Загрузка отчёта…</p>}
+              {audit === "missing" && <p className="mt-1 text-warn">Отчёт проверки не найден. Запустите «npm run audit:data».</p>}
+              {audit && audit !== "missing" && (
+                <>
+                  <p className="mt-1 text-ink-2">
+                    Статус: <span className={audit.status === "failed" ? "text-warn" : "text-in"}>{statusLabel[audit.status]}</span> · проверено{" "}
+                    {new Date(audit.auditedAt).toLocaleString("ru-RU")}
+                    {audit.datasetGeneratedAt !== meta.generatedAt && <span className="text-warn"> (отчёт относится к другой версии базы)</span>}
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {audit.categories.map((c) => (
+                      <li key={c.id} className="flex gap-2 text-[12px]">
+                        <span
+                          className={
+                            c.severity === "error" ? "w-4 shrink-0 text-warn" : c.severity === "warning" ? "w-4 shrink-0 text-out" : "w-4 shrink-0 text-faint"
+                          }
+                          aria-label={c.severity}
+                        >
+                          {c.severity === "info" ? "·" : "!"}
+                        </span>
+                        <span className="flex-1 text-ink-2" title={c.suggestion}>
+                          {c.title}
+                        </span>
+                        <span className="tabular text-muted">{c.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-faint">
+                    Проверка только сообщает о проблемах; данные автоматически не исправляются. Подробный отчёт: docs/data-audit.md.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {[

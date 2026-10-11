@@ -153,6 +153,17 @@ export function MetaboliteCard({ id }: { id: string }) {
               </dd>
             </>
           )}
+          <dt className="text-muted">Заряд</dt>
+          <dd className="tabular text-ink-2">
+            {merged?.charge !== undefined ? (merged.charge > 0 ? `+${merged.charge}` : String(merged.charge)) : <span className="text-muted">неизвестен</span>}
+            {merged?.charge !== undefined && <span className="text-[11px] text-muted"> (форма ChEBI, основная при pH 7,3)</span>}
+          </dd>
+          {merged?.mass !== undefined && (
+            <>
+              <dt className="text-muted">Масса</dt>
+              <dd className="tabular text-ink-2">{merged.mass} Да</dd>
+            </>
+          )}
           {merged?.smiles && (
             <>
               <dt className="text-muted">SMILES</dt>

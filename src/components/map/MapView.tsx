@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   EyeOff,
   Focus,
+  Undo2,
   GitFork,
   LayoutGrid,
   Maximize2,
@@ -39,12 +40,15 @@ export function MapView() {
   const hiddenComps = useMemo(() => new Set(state.hiddenCompartmentIds), [state.hiddenCompartmentIds]);
 
   const reactionIds = useMemo(() => {
-    if (hiddenComps.size === 0) return state.visibleReactionIds;
+    const inPathway = state.mapPathwayFilter ? new Set(index.pathwayReactionsDeep.get(state.mapPathwayFilter) ?? []) : null;
+    if (hiddenComps.size === 0 && !inPathway) return state.visibleReactionIds;
     return state.visibleReactionIds.filter((rid) => {
       const r = index.reactions.get(rid);
-      return r ? r.compartmentIds.some((c) => !hiddenComps.has(c)) : false;
+      if (!r) return false;
+      if (inPathway && !inPathway.has(rid)) return false;
+      return hiddenComps.size === 0 || r.compartmentIds.some((c) => !hiddenComps.has(c));
     });
-  }, [state.visibleReactionIds, hiddenComps, index]);
+  }, [state.visibleReactionIds, state.mapPathwayFilter, hiddenComps, index]);
 
   const model = useMemo(
     () =>
@@ -95,6 +99,15 @@ export function MapView() {
       />
 
       {empty && <EmptyMap />}
+      {empty && state.mapHistory.length > 0 && (
+        <button
+          type="button"
+          onClick={() => dispatch({ type: "undoMap" })}
+          className="glass absolute bottom-4 left-1/2 z-10 inline-flex min-h-10 -translate-x-1/2 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium hover:text-accent"
+        >
+          <Undo2 className="h-4 w-4" /> Вернуть предыдущую карту
+        </button>
+      )}
 
       {!empty && (
         <>
@@ -108,8 +121,8 @@ export function MapView() {
               ) : (
                 <Network className="h-3.5 w-3.5 text-accent" />
               )}
-              <span className="max-w-[38vw] truncate font-medium">{state.mapContext.label}</span>
-              <span className="tabular text-muted">
+              <span className="max-w-[38vw] truncate font-medium max-sm:max-w-[52vw]">{state.mapContext.label}</span>
+              <span className="tabular whitespace-nowrap text-muted max-sm:hidden">
                 {reactionCount} {pluralRu(reactionCount, "реакция", "реакции", "реакций")} · {metCount}{" "}
                 {pluralRu(metCount, "вещество", "вещества", "веществ")}
               </span>
@@ -121,6 +134,9 @@ export function MapView() {
 
           {/* toolbar */}
           <div className="glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-2xl p-1 max-md:bottom-[calc(env(safe-area-inset-bottom)+12px)]">
+            <IconButton label="Предыдущий вид карты" disabled={state.mapHistory.length === 0} onClick={() => dispatch({ type: "undoMap" })}>
+              <Undo2 className="h-4 w-4" />
+            </IconButton>
             <IconButton label="Вписать в экран" onClick={() => dispatch({ type: "fit" })}>
               <Maximize2 className="h-4 w-4" />
             </IconButton>
