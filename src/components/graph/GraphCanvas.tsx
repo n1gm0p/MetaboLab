@@ -9,6 +9,7 @@ import { metaboliteNodeId, reactionNodeId } from "@/lib/graph/build";
 import type { RoutePath } from "@/lib/graph/route";
 import type { EntityRef } from "@/lib/model/types";
 import type { LayoutMode } from "@/components/state/app-state";
+import { clearPositions, loadPositions, savePositions, skeletonPosition, SKELETON_CENTER, type Point } from "@/lib/graph/skeleton";
 import { buildStylesheet, compartmentColor, readPalette } from "./graph-style";
 
 const isTouch = () => window.matchMedia("(pointer: coarse)").matches;
@@ -35,6 +36,10 @@ export interface GraphCanvasProps {
   layout: LayoutMode;
   layoutNonce: number;
   fitNonce: number;
+  /** bumped to clear saved positions and re-seed the fixed teaching skeleton */
+  resetNonce: number;
+  /** reactions to keep bright; everything else is dimmed (not removed). null = no dimming */
+  dimReactionIds: ReadonlySet<string> | null;
   expandAnchor?: string;
   onSelect: (node: GraphNode) => void;
   onExpand: (node: GraphNode) => void;
@@ -78,8 +83,14 @@ function toElements(model: GraphModel, quiz: boolean): ElementDefinition[] {
   ];
 }
 
-function layoutOptions(mode: LayoutMode, size: number, incremental: boolean): LayoutOptions {
+function layoutOptions(
+  mode: LayoutMode,
+  size: number,
+  incremental: boolean,
+  fixed: { nodeId: string; position: Point }[],
+): LayoutOptions {
   const animate = size < 500;
+  // Hierarchical (dagre) is a manual alternative; it cannot honour fixed anchors.
   if (mode === "hierarchical" && !incremental) {
     return {
       name: "dagre",
@@ -94,20 +105,58 @@ function layoutOptions(mode: LayoutMode, size: number, incremental: boolean): La
       padding: 40,
     } as LayoutOptions;
   }
+  // Default "organic" layout: force-directed, but the teaching skeleton (glycolysis line,
+  // TCA ring, pathway zones) is PINNED, so those nodes never move and only the free nodes
+  // (reaction nodes, peripheral metabolites) settle around them.
   return {
     name: "fcose",
-    quality: size > 800 ? "draft" : "default",
-    randomize: !incremental,
+    quality: size > 1200 ? "draft" : "default",
+    randomize: false,
     animate,
     animationDuration: 450,
     fit: !incremental,
-    padding: 40,
-    nodeRepulsion: 7000,
-    idealEdgeLength: 55,
-    edgeElasticity: 0.45,
-    nodeSeparation: 60,
-    packComponents: true,
+    padding: 60,
+    // free nodes (reaction nodes, cofactors, peripheral metabolites) hug the pinned skeleton;
+    // they are pre-seeded next to their neighbours, so this is only a gentle local de-overlap.
+    nodeRepulsion: 2600,
+    idealEdgeLength: 46,
+    edgeElasticity: 0.5,
+    nodeSeparation: 46,
+    gravity: 0,
+    numIter: 1200,
+    packComponents: false,
+    fixedNodeConstraint: fixed.length ? fixed : undefined,
   } as LayoutOptions;
+}
+
+/** Move every non-fixed node next to the centroid of its already-placed neighbours (two bipartite
+ *  passes: reactions anchor off metabolites, then metabolites off reactions). Keeps the force pass
+ *  local so the fixed skeleton dominates the picture instead of being lost among scattered nodes. */
+function seedFreeNodes(cy: Core, anchorOf: (d: GraphNode) => Point | undefined) {
+  const placed = new Set<string>();
+  cy.nodes().forEach((n) => {
+    if (anchorOf(n.data() as GraphNode)) placed.add(n.id());
+  });
+  const seed = (selector: string) => {
+    cy.nodes(selector).forEach((n) => {
+      if (placed.has(n.id())) return;
+      const refs = n.neighborhood("node").filter((m) => placed.has(m.id()));
+      if (refs.empty()) return;
+      let sx = 0;
+      let sy = 0;
+      refs.forEach((m) => {
+        sx += m.position("x");
+        sy += m.position("y");
+      });
+      n.position({ x: sx / refs.length + (Math.random() - 0.5) * 26, y: sy / refs.length + (Math.random() - 0.5) * 26 });
+      placed.add(n.id());
+    });
+  };
+  cy.batch(() => {
+    seed('[kind = "reaction"]');
+    seed('[kind = "metabolite"]');
+    seed('[kind = "reaction"]'); // reactions whose metabolite neighbours were only placed in pass 2
+  });
 }
 
 export default function GraphCanvas(props: GraphCanvasProps) {
@@ -119,6 +168,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   });
   const lastTapped = useRef<string | null>(null);
   const appliedLayoutNonce = useRef(-1);
+  const appliedResetNonce = useRef(0);
+  const savedPos = useRef<Record<string, Point>>({});
   const [themeTick, setThemeTick] = useState(0);
 
   // --- init once ---
@@ -137,6 +188,14 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       pixelRatio: "auto",
     });
     cyRef.current = cy;
+    savedPos.current = loadPositions();
+
+    // Remember where the user drags a node (per device).
+    cy.on("dragfree", "node", (evt) => {
+      const n = evt.target;
+      savedPos.current[n.id()] = { x: n.position("x"), y: n.position("y") };
+      savePositions(savedPos.current);
+    });
 
     const nodeData = (evt: EventObject) => evt.target.data() as GraphNode;
     cy.on("tap", "node", (evt) => {
@@ -175,6 +234,14 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     if (cy && el && themeTick > 0) cy.style(buildStylesheet(readPalette(el), isTouch()));
   }, [themeTick]);
 
+  // fixed world position of a node if it belongs to the teaching skeleton or the user moved it
+  const anchorOf = (data: GraphNode): Point | undefined => {
+    const saved = savedPos.current[data.id];
+    if (saved) return saved;
+    if (data.kind === "metabolite" && !data.clone) return skeletonPosition(data.chebiId);
+    return undefined;
+  };
+
   // --- sync elements (diff) + layout ---
   useEffect(() => {
     const cy = cyRef.current;
@@ -195,9 +262,14 @@ export default function GraphCanvas(props: GraphCanvasProps) {
           existing.data(e.data);
           continue;
         }
-        if (e.group === "nodes" && anchorPos) {
+        if (e.group === "nodes") {
+          // Place new nodes at their remembered spot, then their fixed skeleton spot, then
+          // near the node that was just expanded — so the backbone is reproducible.
+          const fixed = anchorOf(e.data as GraphNode);
+          const base = fixed ?? anchorPos ?? SKELETON_CENTER;
+          const r = fixed ? 0 : 70;
           const angle = Math.random() * Math.PI * 2;
-          e.position = { x: anchorPos.x + Math.cos(angle) * 80, y: anchorPos.y + Math.sin(angle) * 80 };
+          e.position = { x: base.x + Math.cos(angle) * r, y: base.y + Math.sin(angle) * r };
         }
         cy.add(e);
         added++;
@@ -206,9 +278,65 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     if (appliedLayoutNonce.current !== props.layoutNonce && cy.nodes().length > 0) {
       appliedLayoutNonce.current = props.layoutNonce;
       const incremental = !!anchorPos && added < cy.nodes().length;
-      cy.layout(layoutOptions(props.layout, cy.nodes().length, incremental)).run();
+      const fixed = cy
+        .nodes()
+        .map((n) => {
+          const p = anchorOf(n.data() as GraphNode);
+          return p ? { nodeId: n.id(), position: p } : null;
+        })
+        .filter((x): x is { nodeId: string; position: Point } => x !== null);
+      // Seed free nodes at the centroid of their fixed neighbours so the force pass stays local
+      // and the backbone/ring is not dwarfed by scattered reaction nodes.
+      if (!incremental && fixed.length) seedFreeNodes(cy, anchorOf);
+      cy.layout(layoutOptions(props.layout, cy.nodes().length, incremental, fixed)).run();
     }
   }, [props.model, props.layout, props.layoutNonce, props.expandAnchor, props.quizMode]);
+
+  // --- reset positions to the fixed teaching skeleton ---
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || props.resetNonce === appliedResetNonce.current) return;
+    appliedResetNonce.current = props.resetNonce;
+    if (props.resetNonce === 0) return;
+    clearPositions();
+    savedPos.current = {};
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const p = skeletonPosition(n.data("chebiId"));
+        if (p && n.data("kind") === "metabolite" && !n.data("clone")) n.position({ ...p });
+      });
+    });
+    const fixed = cy
+      .nodes()
+      .map((n) => {
+        const p = skeletonPosition(n.data("chebiId"));
+        return p && n.data("kind") === "metabolite" && !n.data("clone") ? { nodeId: n.id(), position: p } : null;
+      })
+      .filter((x): x is { nodeId: string; position: Point } => x !== null);
+    cy.layout(layoutOptions("organic", cy.nodes().length, false, fixed)).run();
+  }, [props.resetNonce]);
+
+  // --- dimming: when a pathway is selected it stays bright, the rest of the map is dimmed
+  //     (not removed), so the student keeps the whole context ---
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.elements().removeClass("dim");
+      const bright = props.dimReactionIds;
+      if (!bright || bright.size === 0) return;
+      cy.nodes('[kind = "reaction"]').forEach((n) => {
+        if (!bright.has(n.data("refId") as string)) n.addClass("dim");
+      });
+      cy.edges().forEach((e) => {
+        if (!bright.has(e.data("reactionId") as string)) e.addClass("dim");
+      });
+      cy.nodes('[kind = "metabolite"]').forEach((n) => {
+        const touchesBright = n.connectedEdges().some((e) => bright.has(e.data("reactionId") as string));
+        if (!touchesBright) n.addClass("dim");
+      });
+    });
+  }, [props.dimReactionIds, props.model]);
 
   // --- quiz labels ---
   useEffect(() => {

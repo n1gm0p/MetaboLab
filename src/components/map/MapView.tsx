@@ -39,16 +39,22 @@ export function MapView() {
   const hiddenMets = useMemo(() => new Set(state.hiddenMetaboliteIds), [state.hiddenMetaboliteIds]);
   const hiddenComps = useMemo(() => new Set(state.hiddenCompartmentIds), [state.hiddenCompartmentIds]);
 
+  // Hiding compartments is an explicit user action and removes reactions from the map.
   const reactionIds = useMemo(() => {
-    const inPathway = state.mapPathwayFilter ? new Set(index.pathwayReactionsDeep.get(state.mapPathwayFilter) ?? []) : null;
-    if (hiddenComps.size === 0 && !inPathway) return state.visibleReactionIds;
+    if (hiddenComps.size === 0) return state.visibleReactionIds;
     return state.visibleReactionIds.filter((rid) => {
       const r = index.reactions.get(rid);
-      if (!r) return false;
-      if (inPathway && !inPathway.has(rid)) return false;
-      return hiddenComps.size === 0 || r.compartmentIds.some((c) => !hiddenComps.has(c));
+      return r ? r.compartmentIds.some((c) => !hiddenComps.has(c)) : false;
     });
-  }, [state.visibleReactionIds, state.mapPathwayFilter, hiddenComps, index]);
+  }, [state.visibleReactionIds, hiddenComps, index]);
+
+  // Selecting a pathway DIMS everything else instead of removing it — the context stays on screen
+  // and shared metabolites keep their positions.
+  const dimReactionIds = useMemo(() => {
+    if (!state.mapPathwayFilter) return null;
+    const inPathway = index.pathwayReactionsDeep.get(state.mapPathwayFilter);
+    return inPathway ? new Set(inPathway) : null;
+  }, [state.mapPathwayFilter, index]);
 
   const model = useMemo(
     () =>
@@ -90,6 +96,8 @@ export function MapView() {
         quizMode={state.quizMode}
         layout={state.layout}
         layoutNonce={state.layoutNonce}
+        resetNonce={state.resetNonce}
+        dimReactionIds={dimReactionIds}
         fitNonce={state.fitNonce}
         expandAnchor={state.expandAnchor}
         onSelect={onSelect}
@@ -154,7 +162,7 @@ export function MapView() {
             >
               <Share2 className="h-4 w-4" />
             </IconButton>
-            <IconButton label="Перестроить раскладку" onClick={() => dispatch({ type: "relayout" })}>
+            <IconButton label="Сбросить расположение к исходному" onClick={() => dispatch({ type: "resetLayout" })}>
               <RotateCcw className="h-4 w-4" />
             </IconButton>
             <div className="mx-1 h-5 w-px bg-line" />

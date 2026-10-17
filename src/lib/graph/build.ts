@@ -17,6 +17,8 @@ export interface GraphNode {
   refId: string;
   label: string;
   compartmentId?: string;
+  /** ChEBI id of the metabolite (used to place it on the fixed teaching skeleton) */
+  chebiId?: string;
   currency?: boolean;
   /** currency metabolite cloned for a single reaction */
   clone?: boolean;
@@ -91,6 +93,7 @@ export function buildGraph(index: MetaboIndex, reactionIds: Iterable<string>, op
             refId: m.id,
             label: metaboliteLabel(index, m.id, opts.preferRu),
             compartmentId: m.compartmentId,
+            chebiId: m.chebiId,
             currency: m.currency,
             clone,
           });

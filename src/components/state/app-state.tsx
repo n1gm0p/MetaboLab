@@ -47,6 +47,8 @@ export interface AppState {
   quizMode: boolean;
   layout: LayoutMode;
   layoutNonce: number;
+  /** bumped to reset node positions to the fixed teaching skeleton */
+  resetNonce: number;
   fitNonce: number;
   /** metabolite node id that was expanded last (layout anchors new nodes around it) */
   expandAnchor?: string;
@@ -73,8 +75,9 @@ export const initialState: AppState = {
   cofactorMode: "duplicate",
   preferRu: true,
   quizMode: false,
-  layout: "hierarchical",
+  layout: "organic",
   layoutNonce: 0,
+  resetNonce: 0,
   fitNonce: 0,
   activeRoute: null,
   activeRoutePath: 0,
@@ -100,6 +103,7 @@ export type Action =
   | { type: "setQuiz"; value: boolean }
   | { type: "setLayout"; layout: LayoutMode }
   | { type: "relayout" }
+  | { type: "resetLayout" }
   | { type: "fit" }
   | { type: "setRoute"; route: RouteResult | null }
   | { type: "selectRoutePath"; index: number }
@@ -204,6 +208,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, layout: action.layout, layoutNonce: state.layoutNonce + 1, expandAnchor: undefined };
     case "relayout":
       return { ...state, layoutNonce: state.layoutNonce + 1, expandAnchor: undefined };
+    case "resetLayout":
+      return { ...state, resetNonce: state.resetNonce + 1, mapPathwayFilter: null, fitNonce: state.fitNonce + 1 };
     case "fit":
       return { ...state, fitNonce: state.fitNonce + 1 };
     case "setRoute":

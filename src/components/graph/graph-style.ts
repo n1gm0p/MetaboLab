@@ -141,6 +141,9 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
 
     // --- interaction states ---
     { selector: ".faded", style: { opacity: 0.18 } },
+    // dimmed context: a pathway is selected; the rest of the map recedes but stays visible
+    { selector: ".dim", style: { opacity: 0.28 } },
+    { selector: "node.dim", style: { "text-opacity": 0.45 } },
     {
       selector: "node.focus",
       style: { "border-width": 3, "border-color": p.accent, "background-color": p.node, "z-index": 10 },
