@@ -118,26 +118,45 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
       style: { shape: "round-rectangle", "background-color": "#30b0c7" },
     },
     {
+      // main carbon-skeleton flow: bold, solid — reads like the main arrows of a textbook chart
       selector: "edge",
       style: {
-        width: 1.4,
-        "line-color": p.line,
-        "target-arrow-color": p.line,
-        "source-arrow-color": p.line,
+        width: 2.1,
+        "line-color": p.muted,
+        "target-arrow-color": p.muted,
+        "source-arrow-color": p.muted,
         "curve-style": "bezier",
-        "arrow-scale": 0.8,
+        "arrow-scale": 0.85,
         label: "data(stoichLabel)",
         "font-size": 9,
         color: p.muted,
         "text-background-color": p.canvas,
         "text-background-opacity": 1,
         "text-background-padding": "1px",
-        opacity: 0.9,
+        opacity: 0.95,
       },
     },
     { selector: "edge[role = 'product']", style: { "target-arrow-shape": "triangle" } },
     { selector: "edge[role = 'substrate'][?reversible]", style: { "source-arrow-shape": "triangle" } },
-    { selector: "edge[?currencyEdge]", style: { width: 1, "line-style": "dashed", opacity: 0.55 } },
+    // cofactors (ATP/ADP, NAD(H), CoA, H2O…): thin, dashed, curved "arcs" that flow into and out
+    // of the reaction node instead of looking like equal main participants.
+    {
+      selector: "edge[?currencyEdge]",
+      style: {
+        width: 1,
+        "line-style": "dashed",
+        "line-color": p.line,
+        "target-arrow-color": p.line,
+        "source-arrow-color": p.line,
+        "curve-style": "unbundled-bezier",
+        "control-point-weights": 0.5,
+        "arrow-scale": 0.6,
+        opacity: 0.5,
+      },
+    },
+    // substrate-cofactors bow one way, product-cofactors the other → they "flow" around the node
+    { selector: "edge[role = 'substrate'][?currencyEdge]", style: { "control-point-distances": 34 } },
+    { selector: "edge[role = 'product'][?currencyEdge]", style: { "control-point-distances": -34 } },
 
     // --- interaction states ---
     { selector: ".faded", style: { opacity: 0.18 } },
