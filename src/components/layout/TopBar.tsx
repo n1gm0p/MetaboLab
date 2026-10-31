@@ -36,6 +36,29 @@ export function TopBar() {
       >
         <GraduationCap className="h-[18px] w-[18px]" />
       </IconButton>
+      <div className="flex items-center gap-0.5 rounded-[10px] bg-hover p-0.5 max-md:hidden" role="radiogroup" aria-label="Уровень детализации">
+        {(
+          [
+            ["student", "Студент", "Строгий костяк: главные субстраты и продукты, базовые сведения"],
+            ["pro", "Проф", "Полная детализация: кофакторы, EC, регуляция, структуры"],
+          ] as const
+        ).map(([mode, label, hint]) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={state.detailMode === mode}
+            title={hint}
+            onClick={() => dispatch({ type: "setDetailMode", mode })}
+            className={cx(
+              "min-h-7 rounded-lg px-2.5 text-[12px] font-medium transition-colors",
+              state.detailMode === mode ? "bg-panel-solid text-ink shadow-sm" : "text-muted hover:text-ink",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <SettingsPopover />
       <IconButton
         label={state.rightOpen ? "Скрыть карточку" : "Показать карточку"}

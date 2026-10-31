@@ -8,7 +8,7 @@ import type { GraphModel, GraphNode } from "@/lib/graph/build";
 import { metaboliteNodeId, reactionNodeId } from "@/lib/graph/build";
 import type { RoutePath } from "@/lib/graph/route";
 import type { EntityRef } from "@/lib/model/types";
-import type { LayoutMode } from "@/components/state/app-state";
+import type { DetailMode, LayoutMode } from "@/components/state/app-state";
 import { clearPositions, loadPositions, savePositions, skeletonPosition, SKELETON_CENTER, type Point } from "@/lib/graph/skeleton";
 import { buildStylesheet, compartmentColor, readPalette } from "./graph-style";
 
@@ -33,6 +33,8 @@ export interface GraphCanvasProps {
   focus: EntityRef | null;
   routePath: RoutePath | null;
   quizMode: boolean;
+  /** "student" hides cofactors until zoomed in; "pro" keeps them visible */
+  detailMode: DetailMode;
   layout: LayoutMode;
   layoutNonce: number;
   fitNonce: number;
@@ -170,6 +172,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   const appliedLayoutNonce = useRef(-1);
   const appliedResetNonce = useRef(0);
   const savedPos = useRef<Record<string, Point>>({});
+  const applyDetail = useRef<() => void>(() => {});
   const [themeTick, setThemeTick] = useState(0);
 
   // --- init once ---
@@ -196,6 +199,28 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       savedPos.current[n.id()] = { x: n.position("x"), y: n.position("y") };
       savePositions(savedPos.current);
     });
+
+    // Semantic zoom: when zoomed out, cofactor chips/arcs recede so only the main backbone and
+    // pathway zones read; zooming in brings them back. The threshold depends on the detail mode:
+    // "pro" keeps cofactors much longer than "student".
+    let cofBand: "hidden" | "shown" | null = null;
+    const detail = () => {
+      const z = cy.zoom();
+      const threshold = handlers.current.detailMode === "pro" ? 0.45 : 0.95;
+      const band = z < threshold ? "hidden" : "shown";
+      if (band === cofBand) return;
+      cofBand = band;
+      cy.batch(() => {
+        const cof = cy.elements('node[?currency], edge[?currencyEdge]');
+        if (band === "hidden") cof.addClass("cof-hidden");
+        else cof.removeClass("cof-hidden");
+      });
+    };
+    applyDetail.current = () => {
+      cofBand = null;
+      detail();
+    };
+    cy.on("zoom", detail);
 
     const nodeData = (evt: EventObject) => evt.target.data() as GraphNode;
     cy.on("tap", "node", (evt) => {
@@ -290,7 +315,13 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       if (!incremental && fixed.length) seedFreeNodes(cy, anchorOf);
       cy.layout(layoutOptions(props.layout, cy.nodes().length, incremental, fixed)).run();
     }
+    applyDetail.current(); // class freshly added cofactor nodes/edges for the current zoom + mode
   }, [props.model, props.layout, props.layoutNonce, props.expandAnchor, props.quizMode]);
+
+  // --- detail mode (student/pro): re-evaluate cofactor visibility threshold ---
+  useEffect(() => {
+    applyDetail.current();
+  }, [props.detailMode]);
 
   // --- reset positions to the fixed teaching skeleton ---
   useEffect(() => {

@@ -59,6 +59,7 @@ export function useSessionPersistence(
         focus: saved.focus && exists(index, saved.focus) ? saved.focus : null,
         cofactorMode: saved.cofactorMode,
         preferRu: saved.preferRu,
+        detailMode: saved.detailMode,
         layout: saved.layout,
         hiddenCompartmentIds: saved.hiddenCompartmentIds ?? [],
       };
@@ -80,6 +81,7 @@ export function useSessionPersistence(
         focus: state.focus,
         cofactorMode: state.cofactorMode,
         preferRu: state.preferRu,
+        detailMode: state.detailMode,
         layout: state.layout,
         hiddenCompartmentIds: state.hiddenCompartmentIds,
       };
@@ -96,6 +98,7 @@ export function useSessionPersistence(
     state.focus,
     state.cofactorMode,
     state.preferRu,
+    state.detailMode,
     state.layout,
     state.hiddenCompartmentIds,
   ]);

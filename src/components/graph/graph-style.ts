@@ -81,6 +81,8 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
         label: "data(display)",
         color: p.ink,
         "font-size": 11,
+        // semantic zoom: metabolite names fade out only when zoomed quite far (names matter most)
+        "min-zoomed-font-size": 4,
         "font-weight": 500,
         "text-valign": "center",
         "text-halign": "center",
@@ -108,6 +110,8 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
         "border-width": 0,
         label: "data(display)",
         "font-size": 8,
+        // EC labels on reactions disappear sooner than metabolite names when zooming out
+        "min-zoomed-font-size": 11,
         color: p.muted,
         "text-valign": "bottom",
         "text-margin-y": 3,
@@ -163,6 +167,8 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
     // dimmed context: a pathway is selected; the rest of the map recedes but stays visible
     { selector: ".dim", style: { opacity: 0.28 } },
     { selector: "node.dim", style: { "text-opacity": 0.45 } },
+    // semantic zoom: cofactor chips/arcs are hidden when zoomed out (or in student mode)
+    { selector: ".cof-hidden", style: { display: "none" } },
     {
       selector: "node.focus",
       style: { "border-width": 3, "border-color": p.accent, "background-color": p.node, "z-index": 10 },

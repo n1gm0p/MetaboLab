@@ -94,6 +94,7 @@ export function MapView() {
         focus={state.focus}
         routePath={routePath}
         quizMode={state.quizMode}
+        detailMode={state.detailMode}
         layout={state.layout}
         layoutNonce={state.layoutNonce}
         resetNonce={state.resetNonce}

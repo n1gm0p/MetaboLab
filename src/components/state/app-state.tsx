@@ -9,6 +9,8 @@ import type { RouteResult } from "@/lib/graph/route";
 
 export type LeftTab = "pathways" | "route" | "library";
 export type LayoutMode = "hierarchical" | "organic";
+/** overall level of detail on the map and in the cards */
+export type DetailMode = "student" | "pro";
 
 export interface MapContext {
   kind: "pathway" | "neighborhood" | "route" | "custom" | "empty";
@@ -45,6 +47,8 @@ export interface AppState {
   cofactorMode: CofactorMode;
   preferRu: boolean;
   quizMode: boolean;
+  /** "student" = strict backbone / basics; "pro" = full detail */
+  detailMode: DetailMode;
   layout: LayoutMode;
   layoutNonce: number;
   /** bumped to reset node positions to the fixed teaching skeleton */
@@ -75,6 +79,7 @@ export const initialState: AppState = {
   cofactorMode: "duplicate",
   preferRu: true,
   quizMode: false,
+  detailMode: "student",
   layout: "organic",
   layoutNonce: 0,
   resetNonce: 0,
@@ -101,6 +106,7 @@ export type Action =
   | { type: "setCofactorMode"; mode: CofactorMode }
   | { type: "setPreferRu"; value: boolean }
   | { type: "setQuiz"; value: boolean }
+  | { type: "setDetailMode"; mode: DetailMode }
   | { type: "setLayout"; layout: LayoutMode }
   | { type: "relayout" }
   | { type: "resetLayout" }
@@ -121,7 +127,7 @@ export type Action =
 /** The part of the state that survives reloads (see use-session-persistence). */
 export type PersistedState = Pick<
   AppState,
-  "visibleReactionIds" | "mapContext" | "focus" | "cofactorMode" | "preferRu" | "layout" | "hiddenCompartmentIds"
+  "visibleReactionIds" | "mapContext" | "focus" | "cofactorMode" | "preferRu" | "detailMode" | "layout" | "hiddenCompartmentIds"
 >;
 
 const sameRef = (a: EntityRef | null, b: EntityRef | null) => !!a && !!b && a.type === b.type && a.id === b.id;
@@ -204,6 +210,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, preferRu: action.value };
     case "setQuiz":
       return { ...state, quizMode: action.value };
+    case "setDetailMode":
+      return { ...state, detailMode: action.mode };
     case "setLayout":
       return { ...state, layout: action.layout, layoutNonce: state.layoutNonce + 1, expandAnchor: undefined };
     case "relayout":
