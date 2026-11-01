@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Network, Share2 } from "lucide-react";
 import { directionalReactions } from "@/lib/data/metabo-index";
-import { chebiUrl, keggCompoundUrl, prettyFormula } from "@/lib/format";
+import { chebiUrl, keggCompoundUrl, prettyFormula, structureImageUrl } from "@/lib/format";
 import { useApp } from "@/components/state/app-state";
 import { useNavigator } from "@/components/state/use-navigator";
 import { Chip, ExtLink, Section, TextButton, cx } from "@/components/ui/primitives";
@@ -133,6 +133,8 @@ export function MetaboliteCard({ id }: { id: string }) {
         </Section>
       )}
 
+      {!quiz && <StructureSection smiles={merged?.smiles} inchiKey={merged?.inchiKey} name={(state.preferRu && m.nameRu) || m.name} />}
+
       <SummarySection details={merged} loading={loading || chebiDetails.loading} error={error && chebiDetails.error} />
 
       <Section title="Идентификаторы">
@@ -193,5 +195,30 @@ export function MetaboliteCard({ id }: { id: string }) {
 
       <SourcesSection sources={m.sources} details={details} />
     </div>
+  );
+}
+
+/** 2D skeletal structure, depicted by PubChem from the compound's own SMILES/InChIKey (from ChEBI).
+ *  Shown only when those strings exist; hidden if the image fails (e.g. offline). */
+function StructureSection({ smiles, inchiKey, name }: { smiles?: string; inchiKey?: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  const url = structureImageUrl({ smiles, inchiKey }, 220);
+  if (!url || failed) return null;
+  return (
+    <Section title="Структурная формула">
+      <div className="flex items-center justify-center rounded-xl border border-line bg-panel-solid p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={`Скелетная формула: ${name}`}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-auto max-h-[220px] w-auto max-w-full dark:[filter:invert(0.92)_hue-rotate(180deg)]"
+        />
+      </div>
+      <p className="mt-1.5 text-[11px] text-faint">
+        Изображение построено PubChem по структуре из ChEBI (SMILES/InChIKey) — это изображение структуры, а не отдельный источник данных.
+      </p>
+    </Section>
   );
 }

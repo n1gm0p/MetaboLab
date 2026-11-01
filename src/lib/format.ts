@@ -19,6 +19,25 @@ export const keggCompoundUrl = (id: string) => `https://www.kegg.jp/entry/${id}`
 export const ecUrl = (ec: string) => `https://enzyme.expasy.org/EC/${ec}`;
 export const pubmedUrl = (id: string) => `https://pubmed.ncbi.nlm.nih.gov/${id}/`;
 
+/**
+ * URL of a 2D skeletal-structure PNG, rendered by PubChem from the compound's own SMILES (or, as a
+ * fallback, its InChIKey). Both strings come from ChEBI (via EBI OLS) in our dataset, so the picture
+ * is a faithful depiction of the real structure — nothing is invented. Needs network; fails silently
+ * offline (the node/card just shows no image).
+ */
+export function structureImageUrl(
+  structure: { smiles?: string; inchiKey?: string } | undefined,
+  size = 180,
+): string | undefined {
+  if (!structure) return undefined;
+  const dim = `${size}x${Math.round(size * 0.82)}`;
+  if (structure.smiles)
+    return `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(structure.smiles)}/PNG?image_size=${dim}`;
+  if (structure.inchiKey && /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(structure.inchiKey))
+    return `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/${structure.inchiKey}/PNG?image_size=${dim}`;
+  return undefined;
+}
+
 /** Render a chemical formula with subscripts for digits (C6H12O6 -> C₆H₁₂O₆). */
 export function prettyFormula(f: string): string {
   const sub = "₀₁₂₃₄₅₆₇₈₉";

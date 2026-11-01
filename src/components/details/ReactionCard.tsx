@@ -214,6 +214,7 @@ export function ReactionCard({ id }: { id: string }) {
         </Section>
       )}
 
+      {state.detailMode === "pro" && (
       <Section title="Проверка записи (вычислено)">
         <ul className="space-y-1.5 text-[13px]">
           <li className="flex gap-2">
@@ -251,6 +252,7 @@ export function ReactionCard({ id }: { id: string }) {
           </li>
         </ul>
       </Section>
+      )}
 
       <SourcesSection sources={r.sources} details={details} />
     </div>

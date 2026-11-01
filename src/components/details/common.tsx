@@ -135,7 +135,9 @@ const SOURCE_LABEL: Record<SourceRef["db"], string> = {
 };
 
 export function SourcesSection({ sources, details }: { sources: SourceRef[]; details?: RecordDetails | null }) {
-  const lit = details?.literature ?? [];
+  const { state } = useApp();
+  // Literature is "pro" detail; in student mode keep the sources list but hide the reference list.
+  const lit = state.detailMode === "pro" ? (details?.literature ?? []) : [];
   return (
     <Section title="Источники" count={sources.length + lit.length}>
       <ul className="space-y-1.5 text-[13px]">
