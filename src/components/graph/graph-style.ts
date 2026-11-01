@@ -169,6 +169,23 @@ export function buildStylesheet(p: Palette, touch = false): StylesheetJson {
     { selector: "node.dim", style: { "text-opacity": 0.45 } },
     // semantic zoom: cofactor chips/arcs are hidden when zoomed out (or in student mode)
     { selector: ".cof-hidden", style: { display: "none" } },
+    // pro mode + zoomed in: draw the real skeletal structure inside the metabolite node
+    {
+      selector: "node.show-struct",
+      style: {
+        width: 72,
+        height: 58,
+        shape: "round-rectangle",
+        "background-color": "#ffffff",
+        "background-image": "data(structUrl)",
+        "background-fit": "contain",
+        "background-clip": "node",
+        "background-image-opacity": 1,
+        "border-width": 1.5,
+        "text-valign": "bottom",
+        "text-margin-y": 3,
+      },
+    },
     {
       selector: "node.focus",
       style: { "border-width": 3, "border-color": p.accent, "background-color": p.node, "z-index": 10 },

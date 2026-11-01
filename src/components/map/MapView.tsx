@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   EyeOff,
   Focus,
@@ -16,8 +16,10 @@ import {
   Waypoints,
   X,
 } from "lucide-react";
-import { buildGraph, type GraphNode } from "@/lib/graph/build";
-import { pluralRu } from "@/lib/format";
+import { buildGraph, type GraphModel, type GraphNode } from "@/lib/graph/build";
+import { pluralRu, structureImageUrl } from "@/lib/format";
+import { loadDetails } from "@/lib/data/details";
+import type { MetaboIndex } from "@/lib/data/metabo-index";
 import { useApp } from "@/components/state/app-state";
 import { useNavigator } from "@/components/state/use-navigator";
 import type { NodeMenuRequest } from "@/components/graph/GraphCanvas";
@@ -66,6 +68,10 @@ export function MapView() {
     [index, reactionIds, state.cofactorMode, state.preferRu, hiddenMets],
   );
 
+  // In "pro" mode, lazily fetch each visible metabolite's structure (from its ChEBI SMILES/InChIKey
+  // in the detail shards) so GraphCanvas can draw the skeletal formula inside the node when zoomed in.
+  const structureUrls = useStructureUrls(index, model, state.detailMode === "pro");
+
   const routePath = state.activeRoute?.paths[state.activeRoutePath] ?? null;
 
   const onSelect = useCallback(
@@ -95,6 +101,7 @@ export function MapView() {
         routePath={routePath}
         quizMode={state.quizMode}
         detailMode={state.detailMode}
+        structureUrls={structureUrls}
         layout={state.layout}
         layoutNonce={state.layoutNonce}
         resetNonce={state.resetNonce}
@@ -245,4 +252,51 @@ function NodeMenu({
       <div className={cx("mt-1 border-t border-line pt-1")}>{item("Закрыть", <X className="h-4 w-4" />, () => {})}</div>
     </div>
   );
+}
+
+/**
+ * Map of metabolite node id -> structure-image URL for the currently visible non-currency
+ * metabolites. Structures (SMILES/InChIKey) live in the detail shards and are loaded lazily and
+ * cached by ChEBI id; only runs in "pro" mode. A metabolite without a structure is simply absent.
+ */
+function useStructureUrls(index: MetaboIndex, model: GraphModel, enabled: boolean): ReadonlyMap<string, string> {
+  const shards = index.dataset.meta.detailShards;
+  const version = index.dataset.meta.generatedAt;
+  // chebiId -> structure URL (null = looked up, none available)
+  const [byChebi, setByChebi] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    if (!enabled || shards <= 0) return;
+    let alive = true;
+    const need = new Set<string>();
+    for (const n of model.nodes)
+      if (n.kind === "metabolite" && !n.clone && !n.currency && n.chebiId && !(n.chebiId in byChebi)) need.add(n.chebiId);
+    if (need.size === 0) return;
+    void Promise.all(
+      [...need].map(async (chebi): Promise<[string, string | null]> => {
+        try {
+          const d = await loadDetails(chebi, shards, version);
+          return [chebi, structureImageUrl({ smiles: d?.smiles, inchiKey: d?.inchiKey }, 150) ?? null];
+        } catch {
+          return [chebi, null];
+        }
+      }),
+    ).then((entries) => {
+      if (alive) setByChebi((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [enabled, model, shards, version, byChebi]);
+
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    if (!enabled) return map;
+    for (const n of model.nodes) {
+      if (n.kind !== "metabolite" || n.clone || n.currency || !n.chebiId) continue;
+      const url = byChebi[n.chebiId];
+      if (url) map.set(n.id, url);
+    }
+    return map;
+  }, [enabled, model, byChebi]);
 }

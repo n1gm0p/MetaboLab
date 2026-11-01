@@ -35,6 +35,8 @@ export interface GraphCanvasProps {
   quizMode: boolean;
   /** "student" hides cofactors until zoomed in; "pro" keeps them visible */
   detailMode: DetailMode;
+  /** metabolite node id -> skeletal-structure image URL (pro mode; shown when zoomed in) */
+  structureUrls: ReadonlyMap<string, string>;
   layout: LayoutMode;
   layoutNonce: number;
   fitNonce: number;
@@ -204,20 +206,34 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     // pathway zones read; zooming in brings them back. The threshold depends on the detail mode:
     // "pro" keeps cofactors much longer than "student".
     let cofBand: "hidden" | "shown" | null = null;
+    let structBand: "on" | "off" | null = null;
     const detail = () => {
       const z = cy.zoom();
-      const threshold = handlers.current.detailMode === "pro" ? 0.45 : 0.95;
-      const band = z < threshold ? "hidden" : "shown";
-      if (band === cofBand) return;
-      cofBand = band;
-      cy.batch(() => {
-        const cof = cy.elements('node[?currency], edge[?currencyEdge]');
-        if (band === "hidden") cof.addClass("cof-hidden");
-        else cof.removeClass("cof-hidden");
-      });
+      const pro = handlers.current.detailMode === "pro";
+      // cofactor chips/arcs recede when zoomed out (sooner in student mode)
+      const cband = z < (pro ? 0.45 : 0.95) ? "hidden" : "shown";
+      if (cband !== cofBand) {
+        cofBand = cband;
+        cy.batch(() => {
+          const cof = cy.elements('node[?currency], edge[?currencyEdge]');
+          if (cband === "hidden") cof.addClass("cof-hidden");
+          else cof.removeClass("cof-hidden");
+        });
+      }
+      // skeletal structures appear inside metabolite nodes in pro mode when zoomed in
+      const sband: "on" | "off" = pro && z >= 1.1 ? "on" : "off";
+      if (sband !== structBand) {
+        structBand = sband;
+        cy.batch(() => {
+          const s = cy.nodes("[structUrl]");
+          if (sband === "on") s.addClass("show-struct");
+          else s.removeClass("show-struct");
+        });
+      }
     };
     applyDetail.current = () => {
       cofBand = null;
+      structBand = null;
       detail();
     };
     cy.on("zoom", detail);
@@ -322,6 +338,20 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   useEffect(() => {
     applyDetail.current();
   }, [props.detailMode]);
+
+  // --- attach/detach skeletal-structure image URLs on metabolite nodes ---
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.nodes('[kind = "metabolite"]').forEach((n) => {
+        const url = props.structureUrls.get(n.id());
+        if (url) n.data("structUrl", url);
+        else if (n.data("structUrl")) n.removeData("structUrl");
+      });
+    });
+    applyDetail.current();
+  }, [props.structureUrls, props.model]);
 
   // --- reset positions to the fixed teaching skeleton ---
   useEffect(() => {
